@@ -17,5 +17,5 @@ install:
     - chmod +x ./prepare-package.sh
     - ./prepare-package.sh $TEST_PKG
 script:
-    - cabal check
-    - cabal test
+    - cd $TEST_PKG && cabal check
+    - cd $TEST_PKG && cabal test
