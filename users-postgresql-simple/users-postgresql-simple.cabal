@@ -32,7 +32,7 @@ source-repository head
 library
   exposed-modules:     Web.Users.Postgresql
   build-depends:
-                       base >=4.7 && <4.8,
+                       base >=4.6,
                        users >=0.1,
                        postgresql-simple >=0.4,
                        aeson >=0.8,
