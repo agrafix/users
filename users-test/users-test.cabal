@@ -24,7 +24,7 @@ library
   exposed-modules:     Web.Users.TestSpec
   build-depends:
                        aeson >=0.8,
-                       base >=4.6,
+                       base >=4.6 && <5,
                        hspec >=2.1,
                        users >=0.1,
                        text >=1.2
