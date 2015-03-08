@@ -1,5 +1,6 @@
 #/usr/bin/env/sh
 set -e
+set -x
 
 PKG="$1"
 
