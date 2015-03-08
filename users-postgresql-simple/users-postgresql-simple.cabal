@@ -50,7 +50,7 @@ test-suite users-postgresql-tests
   hs-source-dirs:      test
   main-is:             Spec.hs
   build-depends:
-                       base,
+                       base >=4.6,
                        hspec >=2.1,
                        postgresql-simple,
                        users-postgresql-simple,
