@@ -2,12 +2,17 @@
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE CPP #-}
 module Web.Users.Postgresql () where
 
 import Web.Users.Types
 
 import Control.Monad
+#if MIN_VERSION_mtl(2,2,0)
 import Control.Monad.Except
+#else
+import Control.Monad.Error
+#endif
 import Data.Aeson
 import Data.Int
 import Data.Maybe
@@ -64,6 +69,17 @@ unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM check a =
     do r <- check
        unless r a
+
+#if MIN_VERSION_mtl(2,2,0)
+type ErrorT = ExceptT
+runErrorT :: ErrorT e m a -> m (Either e a)
+runErrorT = runExceptT
+#else
+-- a hack... :-(
+instance Error UpdateUserError where
+    noMsg = error "Calling fail not supported"
+    strMsg = error "Calling fail not supported"
+#endif
 
 instance UserStorageBackend Connection where
     type UserId Connection = Int64
@@ -138,7 +154,7 @@ instance UserStorageBackend Connection where
              Nothing ->
                  return $ Left UserDoesntExit
              Just origUser ->
-                 runExceptT $
+                 runErrorT $
                  do let newUser = updateFun origUser
                     when (u_name newUser /= u_name origUser) $
                          do [(Only counter)] <-
