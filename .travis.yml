@@ -6,5 +6,16 @@ env:
     - TEST_PKG=users
     - TEST_PKG=users-test
     - TEST_PKG=users-postgresql-simple
+addons:
+    postgresql: "9.3"
+before_install:
+    - createdb `whoami`
+    - cabal update
+    - cabal --version
+    - ghc --version
+install:
+    - chmod +x ./prepare-package.sh
+    - ./prepare-package.sh $TEST_PKG
 script:
-    chmod +x ./check-package.sh && ./check-package.sh $TEST_PKG
+    - cabal check
+    - cabal test

@@ -22,4 +22,3 @@ esac
 cabal install -j8 --only-dep --enable-tests
 cabal configure --enable-tests
 cabal build
-cabal test
