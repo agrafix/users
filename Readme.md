@@ -2,7 +2,7 @@
 
 [![Build Status](https://travis-ci.org/agrafix/users.svg)](https://travis-ci.org/agrafix/users)
 
-A set of library simplifying user management for web applications. 
+A set of libraries simplifying user management for web applications. 
 
 Hackage: [users](http://hackage.haskell.org/package/users)
 
@@ -23,4 +23,4 @@ When building a prototype, a small or medium sized Haskell web application with 
 
 ## Contribution
 
-Feel free to extend the test specification with anything you want to have tested and submit a pull request. Backends can be either provided as pull request if they are 'mainstream' enough or you can create a separate repository and have it linked here.
+Feel free to extend the test specification with anything you want to have tested and submit a pull request. Backends can be either provided as pull request if they are 'mainstream' enough or you can create a separate repository and have it linked here. The major versions of all backend packages should match the major version of the core package providing the `UserStorageBackend` typeclass.
