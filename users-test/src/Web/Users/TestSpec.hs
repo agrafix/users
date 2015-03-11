@@ -8,6 +8,7 @@ where
 import Web.Users.Types
 
 import Control.Concurrent (threadDelay)
+import Control.Monad
 import Data.Aeson
 import GHC.Generics
 import Test.Hspec
@@ -29,7 +30,7 @@ mkUser name email =
     User
     { u_name = name
     , u_email = email
-    , u_password = PasswordPlain "1234"
+    , u_password = makePassword "1234"
     , u_active = False
     , u_more = DummyDetails True 21
     }
@@ -70,12 +71,8 @@ makeUsersSpec backend =
                  assertRight (createUser backend userA) $ \userId1 ->
                  assertRight (createUser backend userB) $ \userId2 ->
                  do allUsers <- listUsers backend Nothing
-                    if and [ (userId1, userA { u_password = PasswordHidden }) `elem` allUsers
-                           , (userId2, userB { u_password = PasswordHidden }) `elem` allUsers
-                           ]
-                    then return ()
-                    else expectationFailure $ "create users not in user list:" ++ show allUsers
-
+                    unless ((userId1, hidePassword userA) `elem` allUsers && (userId2, hidePassword userB) `elem` allUsers)
+                           (expectationFailure $ "create users not in user list:" ++ show allUsers)
                     countUsers backend `shouldReturn` 2
               it "updating and loading users should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
@@ -90,9 +87,8 @@ makeUsersSpec backend =
                         updateUserDetails backend userIdA (\d -> d { dd_foo = False })
                         userA' <- getUserById backend userIdA
                         userA' `shouldBe`
-                               (Just $ userA
+                               (Just $ (hidePassword userA)
                                 { u_name = "changed"
-                                , u_password = PasswordHidden
                                 , u_more =
                                     (u_more userA)
                                     { dd_foo = False
@@ -103,18 +99,18 @@ makeUsersSpec backend =
                  assertRight (createUser backend userB) $ \userIdB ->
                      do deleteUser backend userIdA
                         (allUsers :: [(UserId b, DummyUser)]) <- listUsers backend Nothing
-                        (map fst allUsers) `shouldBe` [userIdB]
+                        map fst allUsers `shouldBe` [userIdB]
                         getUserById backend userIdA `shouldReturn` (Nothing :: Maybe DummyUser)
               it "reusing a deleted users name should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
                      do deleteUser backend userIdA
                         assertRight (createUser backend userA) $ const (return ())
        describe "initialisation" $
-           do it "calling initUserBackend multiple times should not result in errors" $
-                 assertRight (createUser backend userA) $ \userIdA ->
-                 do initUserBackend backend
-                    userA' <- getUserById backend userIdA
-                    userA' `shouldBe` (Just $ userA { u_password = PasswordHidden })
+           it "calling initUserBackend multiple times should not result in errors" $
+              assertRight (createUser backend userA) $ \userIdA ->
+              do initUserBackend backend
+                 userA' <- getUserById backend userIdA
+                 userA' `shouldBe` (Just $ hidePassword userA)
        describe "authentification" $
            do it "auth as valid user with username should work" $
                  withAuthedUser $ const (return ())
@@ -122,11 +118,11 @@ makeUsersSpec backend =
                  withAuthedUser' "bar@baz.com" "1234" 500 0 $ const (return ())
               it "auth with invalid credentials should fail" $
                  assertRight (createUser backend userA) $ \_ ->
-                 do authUser backend "foo" "aaaa" 500 `shouldReturn` Nothing
-                    authUser backend "foo" "123" 500 `shouldReturn` Nothing
-                    authUser backend "bar@baz.com" "123" 500 `shouldReturn` Nothing
-                    authUser backend "bar@baz.com' OR 1 = 1 --" "123" 500 `shouldReturn` Nothing
-                    authUser backend "bar@baz.com' OR 1 = 1; --" "' OR 1 = 1; --" 500 `shouldReturn` Nothing
+                 do authUser backend "foo" (PasswordPlain "aaaa") 500 `shouldReturn` Nothing
+                    authUser backend "foo" (PasswordPlain "123") 500 `shouldReturn` Nothing
+                    authUser backend "bar@baz.com" (PasswordPlain "123") 500 `shouldReturn` Nothing
+                    authUser backend "bar@baz.com' OR 1 = 1 --" (PasswordPlain "123") 500 `shouldReturn` Nothing
+                    authUser backend "bar@baz.com' OR 1 = 1; --" (PasswordPlain  "' OR 1 = 1; --") 500 `shouldReturn` Nothing
               it "destroy session should really remove the session" $
                  withAuthedUser $ \(sessionId, _) ->
                      do destroySession backend sessionId
@@ -144,14 +140,14 @@ makeUsersSpec backend =
           do it "generates a valid token for a user" $
                 assertRight (createUser backend userA) $ \userIdA ->
                     do token <- requestPasswordReset backend userIdA 500
-                       verifyPasswordResetToken backend token `shouldReturn` (Just (userA { u_password = PasswordHidden }) :: Maybe DummyUser)
+                       verifyPasswordResetToken backend token `shouldReturn` (Just (hidePassword userA) :: Maybe DummyUser)
              it "a valid token should reset the password" $
                 assertRight (createUser backend userA) $ \userIdA ->
                     do withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- old login
                        token <- requestPasswordReset backend userIdA 500
                        housekeepBackend backend
-                       verifyPasswordResetToken backend token `shouldReturn` (Just (userA { u_password = PasswordHidden }) :: Maybe DummyUser)
-                       assertRight (applyNewPassword backend token "foobar") $ const $ return ()
+                       verifyPasswordResetToken backend token `shouldReturn` (Just (hidePassword userA) :: Maybe DummyUser)
+                       assertRight (applyNewPassword backend token $ makePassword "foobar") $ const $ return ()
                        withAuthedUserNoCreate "foo" "foobar" 500 0 userIdA $ const (return ()) -- new login
              it "expired tokens should not do any harm" $
                 assertRight (createUser backend userA) $ \userIdA ->
@@ -159,7 +155,7 @@ makeUsersSpec backend =
                        token <- requestPasswordReset backend userIdA 1
                        threadDelay (seconds 1)
                        verifyPasswordResetToken backend token `shouldReturn` (Nothing :: Maybe DummyUser)
-                       assertLeft (applyNewPassword backend token "foobar")
+                       assertLeft (applyNewPassword backend token $ makePassword "foobar")
                                       "Reset password with expired token" $ const $ return ()
                        withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- still old login
              it "invalid tokens should not do any harm" $
@@ -167,7 +163,7 @@ makeUsersSpec backend =
                     do withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- old login
                        let token = PasswordResetToken "Foooooooo!!!!"
                        verifyPasswordResetToken backend token `shouldReturn` (Nothing :: Maybe DummyUser)
-                       assertLeft (applyNewPassword backend token "foobar")
+                       assertLeft (applyNewPassword backend token $ makePassword "foobar")
                                       "Reset password with random token" $ const $ return ()
                        withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- still old login
        describe "user activation" $
@@ -178,20 +174,18 @@ makeUsersSpec backend =
                        assertRight (activateUser backend token) $ const $ return ()
                        userA' <- getUserById backend userIdA
                        userA' `shouldBe`
-                                  (Just $ userA
+                                  (Just $ (hidePassword userA)
                                    { u_active = True
-                                   , u_password = PasswordHidden
                                    })
              it "does not allow expired tokens to activate a user" $
                 assertRight (createUser backend userA) $ \userIdA ->
                     do token <- requestActivationToken backend userIdA 1
                        threadDelay (seconds 1)
-                       assertLeft (activateUser backend token) "invalid token activated user" $ const $ return ()
+                       assertLeft (activateUser backend token) "expired token activated user" $ const $ return ()
                        userA' <- getUserById backend userIdA
                        userA' `shouldBe`
-                                  (Just $ userA
+                                  (Just $ (hidePassword userA)
                                    { u_active = False
-                                   , u_password = PasswordHidden
                                    })
              it "does not allow invalid tokens to activate a user" $
                 assertRight (createUser backend userA) $ \userIdA ->
@@ -199,9 +193,8 @@ makeUsersSpec backend =
                        assertLeft (activateUser backend token) "invalid token activated user" $ const $ return ()
                        userA' <- getUserById backend userIdA
                        userA' `shouldBe`
-                                  (Just $ userA
+                                  (Just $ (hidePassword userA)
                                    { u_active = False
-                                   , u_password = PasswordHidden
                                    })
     where
       seconds x = x * 1000000
@@ -213,7 +206,7 @@ makeUsersSpec backend =
           assertRight (createUser backend userA) $ \userIdA ->
           withAuthedUserNoCreate username pass sTime extTime userIdA action
       withAuthedUserNoCreate username pass sTime extTime userIdA action =
-          do mAuthRes <- authUser backend username pass sTime
+          do mAuthRes <- authUser backend username (PasswordPlain pass) sTime
              case mAuthRes of
                Nothing ->
                    expectationFailure $ "Can not authenticate as user " ++ show username

@@ -3,15 +3,33 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
-module Web.Users.Types where
+module Web.Users.Types
+    ( -- * The core type class
+      UserStorageBackend (..)
+      -- * User representation
+    , User(..), Password(..), makePassword, hidePassword
+    , PasswordPlain(..), verifyPassword
+      -- * Token types
+    , PasswordResetToken(..), ActivationToken(..), SessionId(..)
+      -- * Error types
+    , CreateUserError(..), UpdateUserError(..)
+    , TokenError(..)
+    )
+where
 
 import Control.Applicative
+import Crypto.BCrypt
 import Data.Aeson
 import Data.Int
+import Data.Maybe
+import Data.String
 import Data.Time.Clock
 import Data.Typeable
+import Debug.Trace
 import Web.PathPieces
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified System.IO.Unsafe as U
 
 -- | Errors that happen on storage level during user creation
 data CreateUserError
@@ -64,7 +82,7 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     -- | Delete a user
     deleteUser :: b -> UserId b -> IO ()
     -- | Authentificate a user using username/email and password. The 'NominalDiffTime' describes the session duration
-    authUser :: b -> T.Text -> T.Text -> NominalDiffTime -> IO (Maybe SessionId)
+    authUser :: b -> T.Text -> PasswordPlain -> NominalDiffTime -> IO (Maybe SessionId)
     -- | Verify a 'SessionId'. The session duration can be extended by 'NominalDiffTime'
     verifySession :: b -> SessionId -> NominalDiffTime -> IO (Maybe (UserId b))
     -- | Destroy a session
@@ -74,7 +92,7 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     -- | Check if a 'PasswordResetToken' is still valid and retrieve the owner of it
     verifyPasswordResetToken :: (FromJSON a, ToJSON a) => b -> PasswordResetToken -> IO (Maybe (User a))
     -- | Apply a new password to the owner of 'PasswordResetToken' iff the token is still valid
-    applyNewPassword :: b -> PasswordResetToken -> T.Text -> IO (Either TokenError ())
+    applyNewPassword :: b -> PasswordResetToken -> Password -> IO (Either TokenError ())
     -- | Request an 'ActivationToken' for a given user, valid for 'NominalDiffTime'
     requestActivationToken :: b -> UserId b -> NominalDiffTime -> IO ActivationToken
     -- | Activate the owner of 'ActivationToken' iff the token is still valid
@@ -95,12 +113,46 @@ newtype SessionId
     = SessionId { unSessionId :: T.Text }
     deriving (Show, Eq, ToJSON, FromJSON, Typeable, PathPiece)
 
--- | Password representation. When updating or creating a user, set to 'PasswordPlain'
+-- | Construct a password from plaintext by hashing it
+makePassword :: PasswordPlain -> Password
+makePassword (PasswordPlain plainText) =
+    let hash =
+            T.decodeUtf8 $ fromJustPass $ U.unsafePerformIO $
+            hashPasswordUsingPolicy policy (T.encodeUtf8 plainText)
+    in PasswordHash (trace ("PlainText " ++ show plainText ++ " is " ++ show hash) hash)
+    where
+      policy =
+          HashingPolicy
+          { preferredHashCost = 8
+          , preferredHashAlgorithm = "$2b$"
+          }
+      fromJustPass =
+          fromMaybe (error "makePassword failed. This is probably a bcrypt library error")
+
+-- | Check a plaintext password against a password
+verifyPassword :: PasswordPlain -> Password -> Bool
+verifyPassword (PasswordPlain plainText) pwd =
+    case pwd of
+      PasswordHidden -> False
+      PasswordHash hash ->
+          validatePassword (T.encodeUtf8 hash) (T.encodeUtf8 plainText)
+
+-- | Plaintext passsword. Used for authentification.
+newtype PasswordPlain
+    = PasswordPlain { unPasswordPlain :: T.Text }
+      deriving (Show, Eq, Typeable, IsString)
+
+-- | Password representation. When updating or creating a user, use 'makePassword' to create one.
+-- The implementation details of this type are ONLY for use in backend implementations.
 data Password
-   = PasswordPlain !T.Text
-   | PasswordHash !T.Text
+   = PasswordHash !T.Text
    | PasswordHidden
     deriving (Show, Eq, Typeable)
+
+-- | Strip the password from the user type.
+hidePassword :: User a -> User a
+hidePassword user =
+    user { u_password = PasswordHidden }
 
 -- | Core user datatype. Store custom information in the 'u_more' field
 data User a
@@ -133,4 +185,4 @@ instance FromJSON a => FromJSON (User a) where
           parsePassword maybePass =
               case maybePass of
                 Nothing -> PasswordHidden
-                Just pwd -> PasswordPlain pwd
+                Just pwd -> makePassword (PasswordPlain pwd)

@@ -84,8 +84,7 @@ instance Error UpdateUserError where
 instance UserStorageBackend Connection where
     type UserId Connection = Int64
     initUserBackend conn =
-        do _ <- execute_ conn [sql|CREATE EXTENSION IF NOT EXISTS pgcrypto;|]
-           _ <- execute_ conn [sql|CREATE EXTENSION IF NOT EXISTS "uuid-ossp";|]
+        do _ <- execute_ conn [sql|CREATE EXTENSION IF NOT EXISTS "uuid-ossp";|]
            _ <- execute_ conn createUsersTable
            _ <- execute_ conn createUserTokenTable
            unlessM (doesIndexExist conn "l_username") $
@@ -137,13 +136,14 @@ instance UserStorageBackend Connection where
            return count
     createUser conn user =
         case u_password user of
-          PasswordPlain p ->
+          PasswordHash p ->
               do [(Only counter)] <-
                      query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? OR email = ?;|] (u_name user, u_email user)
+                 putStrLn $ "New user " ++ (show $ u_name user) ++ " has password " ++ (show p)
                  if (counter :: Int64) /= 0
                  then return $ Left UsernameOrEmailAlreadyTaken
                  else do [(Only userId)] <-
-                             query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, crypt(?, gen_salt('bf', 8)), ?, ?, ?) RETURNING lid|]
+                             query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, ?, ?, ?, ?) RETURNING lid|]
                                    (u_name user, p, u_email user, u_active user, toJSON $ u_more user)
                          return $ Right userId
           _ ->
@@ -169,9 +169,9 @@ instance UserStorageBackend Connection where
                               execute conn [sql|UPDATE login SET username = ?, email = ?, is_active = ?, more = ? WHERE lid = ?;|]
                                  (u_name newUser, u_email newUser, u_active newUser, toJSON $ u_more newUser, userId)
                           case u_password newUser of
-                            PasswordPlain p ->
+                            PasswordHash p ->
                                 do _ <-
-                                      execute conn [sql|UPDATE login SET password = crypt(?, gen_salt('bf', 8)) WHERE lid = ?;|] (p, userId)
+                                      execute conn [sql|UPDATE login SET password = ? WHERE lid = ?;|] (p, userId)
                                    return ()
                             _ -> return ()
                           return ()
@@ -180,11 +180,12 @@ instance UserStorageBackend Connection where
            return ()
     authUser conn username password sessionTtl =
         do resultSet <-
-               query conn [sql|SELECT lid FROM login WHERE (username = ? OR email = ?) AND crypt(?, password) = password LIMIT 1;|] (username, username, password)
+               query conn [sql|SELECT lid, password FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
            case resultSet of
-             ((Only userId) : _) ->
-                 do sessionToken <- createToken conn "session" userId sessionTtl
-                    return $ Just $ SessionId sessionToken
+             ((userId, passwordHash) : _)
+                 | verifyPassword password (PasswordHash passwordHash) ->
+                     do sessionToken <- createToken conn "session" userId sessionTtl
+                        return $ Just $ SessionId sessionToken
              _ -> return Nothing
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
@@ -222,7 +223,7 @@ instance UserStorageBackend Connection where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \(user :: User Value) -> user { u_password = PasswordPlain password }
+                        updateUser conn userId $ \(user :: User Value) -> user { u_password = password }
                     deleteToken conn "password_reset" token
                     return $ Right ()
 

@@ -1,5 +1,5 @@
 name:                users
-version:             0.1.0.0
+version:             0.2.0.0
 synopsis:            A library simplifying user management for web applications
 description:         Scrap the boilerplate for managing user accounts in web applications
                      .
@@ -39,6 +39,7 @@ library
   build-depends:
                        aeson >=0.8,
                        base >=4.6 && <5,
+                       bcrypt >=0.0.6,
                        path-pieces >=0.1,
                        text >=1.2,
                        time >=1.4
