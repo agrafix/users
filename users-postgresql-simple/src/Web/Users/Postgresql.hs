@@ -139,7 +139,6 @@ instance UserStorageBackend Connection where
           PasswordHash p ->
               do [(Only counter)] <-
                      query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? OR email = ?;|] (u_name user, u_email user)
-                 putStrLn $ "New user " ++ (show $ u_name user) ++ " has password " ++ (show p)
                  if (counter :: Int64) /= 0
                  then return $ Left UsernameOrEmailAlreadyTaken
                  else do [(Only userId)] <-

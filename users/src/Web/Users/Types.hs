@@ -25,7 +25,6 @@ import Data.Maybe
 import Data.String
 import Data.Time.Clock
 import Data.Typeable
-import Debug.Trace
 import Web.PathPieces
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -119,7 +118,7 @@ makePassword (PasswordPlain plainText) =
     let hash =
             T.decodeUtf8 $ fromJustPass $ U.unsafePerformIO $
             hashPasswordUsingPolicy policy (T.encodeUtf8 plainText)
-    in PasswordHash (trace ("PlainText " ++ show plainText ++ " is " ++ show hash) hash)
+    in PasswordHash hash
     where
       policy =
           HashingPolicy
