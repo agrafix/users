@@ -2,6 +2,7 @@ language: haskell
 ghc:
     - 7.6
     - 7.8
+    - 7.10
 env:
     - TEST_PKG=users
     - TEST_PKG=users-test
