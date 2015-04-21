@@ -7,6 +7,7 @@ module Web.Users.Postgresql () where
 
 import Web.Users.Types
 
+import Control.Applicative ((<$>))
 import Control.Monad
 #if MIN_VERSION_mtl(2,2,0)
 import Control.Monad.Except
@@ -186,6 +187,13 @@ instance UserStorageBackend Connection where
                      do sessionToken <- createToken conn "session" userId sessionTtl
                         return $ Just $ SessionId sessionToken
              _ -> return Nothing
+    withAuthUser conn username password action =
+        do resultSet <-
+               query conn [sql|SELECT lid, password FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
+           case resultSet of
+             ((userId, passwordHash) : _)
+                 | verifyPassword password (PasswordHash passwordHash) -> Just <$> action userId
+             _ -> return Nothing
     authUserByUserData conn username authFn sessionTtl =
         do resultSet <-
                query conn [sql|SELECT lid, more FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
@@ -194,6 +202,13 @@ instance UserStorageBackend Connection where
                  | Success r <- fromJSON more, authFn r ->
                      do sessionToken <- createToken conn "session" userId sessionTtl
                         return $ Just $ SessionId sessionToken
+             _ -> return Nothing
+    withAuthUserByUserData conn username authFn action =
+        do resultSet <-
+               query conn [sql|SELECT lid, more FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
+           case resultSet of
+             ((userId, more) : _)
+                 | Success r <- fromJSON more, authFn r -> Just <$> action userId
              _ -> return Nothing
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
