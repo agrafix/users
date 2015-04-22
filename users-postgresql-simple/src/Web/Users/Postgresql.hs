@@ -108,6 +108,14 @@ instance UserStorageBackend Connection where
     housekeepBackend conn =
         do _ <- execute_ conn [sql|DELETE FROM login_token WHERE valid_until < NOW();|]
            return ()
+    -- | Retrieve a user id from the database
+    getUserIdByName conn username =
+        do resultSet <-
+               query conn [sql|SELECT lid FROM login WHERE username = ? LIMIT 1;|] (Only username)
+           case resultSet of
+             [(Only userId)] ->
+                 return $ Just userId
+             _ -> return Nothing
     getUserById conn userId =
         do resultSet <-
                query conn [sql|SELECT username, email, is_active, more FROM login WHERE lid = ? LIMIT 1;|] (Only userId)

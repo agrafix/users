@@ -58,6 +58,8 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     destroyUserBackend :: b -> IO ()
     -- | This cleans up invalid sessions and other tokens. Call periodically as needed.
     housekeepBackend :: b -> IO ()
+    -- | Retrieve a user id from the database
+    getUserIdByName :: b -> T.Text -> IO (Maybe (UserId b))
     -- | Retrieve a user from the database
     getUserById :: (FromJSON a, ToJSON a) => b -> UserId b -> IO (Maybe (User a))
     -- | List all users (unlimited, or limited)

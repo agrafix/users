@@ -1,5 +1,5 @@
 name:                users-test
-version:             0.2.0.0
+version:             0.2.0.2
 synopsis:            Library to test backends for the users library
 description:         Provides HSpec helpers for backends of <http://hackage.haskell.org/package/users users package>.
                      .
@@ -26,7 +26,7 @@ library
                        aeson >=0.8,
                        base >=4.6 && <5,
                        hspec >=2.1,
-                       users >=0.2,
+                       users >=0.2.0.2,
                        text >=1.2
   hs-source-dirs:      src
   default-language:    Haskell2010
