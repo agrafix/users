@@ -94,6 +94,8 @@ makeUsersSpec backend =
                                     { dd_foo = False
                                     }
                                 })
+                        userIdA' <- getUserIdByName backend "changed"
+                        userIdA' `shouldBe` Just userIdA
               it "deleting users should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertRight (createUser backend userB) $ \userIdB ->
@@ -123,6 +125,31 @@ makeUsersSpec backend =
                     authUser backend "bar@baz.com" (PasswordPlain "123") 500 `shouldReturn` Nothing
                     authUser backend "bar@baz.com' OR 1 = 1 --" (PasswordPlain "123") 500 `shouldReturn` Nothing
                     authUser backend "bar@baz.com' OR 1 = 1; --" (PasswordPlain  "' OR 1 = 1; --") 500 `shouldReturn` Nothing
+              it "sessionless auth as valid user with username should work" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                 do withAuthUser backend "bar@baz.com" (PasswordPlain "1234") (return . (== userIdA)) `shouldReturn` Just True
+                    withAuthUser backend "bar@baz.com" (PasswordPlain "1234") (return . (/= userIdA)) `shouldReturn` Just False
+              it "sessionless auth with invalid credentials should fail" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                    withAuthUser backend "bar@baz.com" (PasswordPlain "xxxx") (return . (== userIdA)) `shouldReturn` Nothing
+              it "auth with valid userdata should work" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                 do mAuthRes <- authUserByUserData backend "bar@baz.com" (== DummyDetails True 21) 500
+                    case mAuthRes of
+                      Nothing ->
+                          expectationFailure $ "Can not authenticate by userdata"
+                      Just sessionId ->
+                          do verifySession backend sessionId 500 `shouldReturn` Just userIdA
+              it "auth with invalid userdata should fail" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                    authUserByUserData backend "bar@baz.com" (/= DummyDetails True 21) 0 `shouldReturn` Nothing
+              it "sessionless auth with valid userdata should work" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                 do withAuthUserByUserData backend "bar@baz.com" (== DummyDetails True 21) (return . (== userIdA)) `shouldReturn` Just True
+                    withAuthUserByUserData backend "bar@baz.com" (== DummyDetails True 21) (return . (/= userIdA)) `shouldReturn` Just False
+              it "sessionless auth with invalid userdata should fail" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                    withAuthUserByUserData backend "bar@baz.com" (/= DummyDetails True 21) (return . (/= userIdA)) `shouldReturn` Nothing
               it "destroy session should really remove the session" $
                  withAuthedUser $ \(sessionId, _) ->
                      do destroySession backend sessionId
