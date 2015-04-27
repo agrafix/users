@@ -84,12 +84,8 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     deleteUser :: b -> UserId b -> IO ()
     -- | Authentificate a user using username/email and password. The 'NominalDiffTime' describes the session duration
     authUser :: b -> T.Text -> PasswordPlain -> NominalDiffTime -> IO (Maybe SessionId)
-    -- | Authentificate a user using username/email and password and execute a single action.
-    withAuthUser :: b -> T.Text -> PasswordPlain -> (UserId b -> IO r) -> IO (Maybe r)
-    -- | Authentificate a user using the additional info stored in the user record. The 'NominalDiffTime' describes the session duration
-    authUserByUserData :: FromJSON a => b -> T.Text -> (a -> Bool) -> NominalDiffTime -> IO (Maybe SessionId)
-    -- | Authentificate a user using the additional info stored in the user record and execute a single action.
-    withAuthUserByUserData :: FromJSON a => b -> T.Text -> (a -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
+    -- | Authentificate a user and execute a single action.
+    withAuthUser :: FromJSON a => b -> T.Text -> (User a -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
     -- | Verify a 'SessionId'. The session duration can be extended by 'NominalDiffTime'
     verifySession :: b -> SessionId -> NominalDiffTime -> IO (Maybe (UserId b))
     -- | Destroy a session

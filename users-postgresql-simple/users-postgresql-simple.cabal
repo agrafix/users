@@ -1,5 +1,5 @@
 name:                users-postgresql-simple
-version:             0.2.0.2
+version:             0.3.0.0
 synopsis:            A PostgreSQL backend for the users package
 description:         This library is a backend driver using <http://hackage.haskell.org/package/postgresql-simple postgresql-simple> for
                      <http://hackage.haskell.org/package/users the "users" library>.
@@ -33,7 +33,7 @@ library
   exposed-modules:     Web.Users.Postgresql
   build-depends:
                        base >=4.6 && <5,
-                       users >=0.2.0.2,
+                       users >=0.3.0.0,
                        postgresql-simple >=0.4,
                        aeson >=0.7,
                        text >=1.2,
