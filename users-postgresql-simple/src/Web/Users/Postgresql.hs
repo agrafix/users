@@ -182,14 +182,8 @@ instance UserStorageBackend Connection where
         do _ <- execute conn [sql|DELETE FROM login WHERE lid = ?;|] (Only userId)
            return ()
     authUser conn username password sessionTtl =
-        do resultSet <-
-               query conn [sql|SELECT lid, password FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
-           case resultSet of
-             ((userId, passwordHash) : _)
-                 | verifyPassword password (PasswordHash passwordHash) ->
-                     do sessionToken <- createToken conn "session" userId sessionTtl
-                        return $ Just $ SessionId sessionToken
-             _ -> return Nothing
+        withAuthUser conn username (\(user :: User Value) -> verifyPassword password $ u_password user) $ \userId ->
+           SessionId <$> createToken conn "session" userId sessionTtl
     withAuthUser conn username authFn action =
         do resultSet <- query conn [sql|SELECT lid, username, password, email, is_active, more FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
            case resultSet of
