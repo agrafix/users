@@ -7,6 +7,7 @@ module Web.Users.Postgresql () where
 
 import Web.Users.Types
 
+import Control.Applicative ((<$>))
 import Control.Monad
 #if MIN_VERSION_mtl(2,2,0)
 import Control.Monad.Except
@@ -107,12 +108,15 @@ instance UserStorageBackend Connection where
     housekeepBackend conn =
         do _ <- execute_ conn [sql|DELETE FROM login_token WHERE valid_until < NOW();|]
            return ()
+    -- | Retrieve a user id from the database
+    getUserIdByName conn username =
+        listToMaybe <$> map fromOnly <$> query conn [sql|SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
     getUserById conn userId =
         do resultSet <-
                query conn [sql|SELECT username, email, is_active, more FROM login WHERE lid = ? LIMIT 1;|] (Only userId)
            case resultSet of
-             (userTuple : _) ->
-                 return $ convertUserTuple userTuple
+             ((username, email, is_active, more) : _) ->
+                 return $ convertUserTuple (username, PasswordHidden, email, is_active, more)
              _ -> return Nothing
     listUsers conn mLimit =
         do let limitPart =
@@ -124,7 +128,7 @@ instance UserStorageBackend Connection where
                    [sql|SELECT lid, username, email, is_active, more FROM login|]
                fullQuery = baseQuery <> limitPart
                convertUser (lid, username, email, isActive, more) =
-                   do user <- convertUserTuple (username, email, isActive, more)
+                   do user <- convertUserTuple (username, PasswordHidden, email, isActive, more)
                       return (lid, user)
            resultSet <-
                query_ conn fullQuery
@@ -178,13 +182,16 @@ instance UserStorageBackend Connection where
         do _ <- execute conn [sql|DELETE FROM login WHERE lid = ?;|] (Only userId)
            return ()
     authUser conn username password sessionTtl =
-        do resultSet <-
-               query conn [sql|SELECT lid, password FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
+        withAuthUser conn username (\(user :: User Value) -> verifyPassword password $ u_password user) $ \userId ->
+           SessionId <$> createToken conn "session" userId sessionTtl
+    withAuthUser conn username authFn action =
+        do resultSet <- query conn [sql|SELECT lid, username, password, email, is_active, more FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
            case resultSet of
-             ((userId, passwordHash) : _)
-                 | verifyPassword password (PasswordHash passwordHash) ->
-                     do sessionToken <- createToken conn "session" userId sessionTtl
-                        return $ Just $ SessionId sessionToken
+             ((userId, name, password, email, is_active, more) : _)
+               -> do user <- convertUserTuple (name, PasswordHash password, email, is_active, more)
+                     if authFn user
+                        then Just <$> action userId
+                        else return Nothing
              _ -> return Nothing
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
@@ -265,9 +272,9 @@ getTokenOwner conn tokenType token =
                ((Only userId) : _) -> return $ Just userId
                _ -> return Nothing
 
-convertUserTuple :: (FromJSON a, Monad m) => (T.Text, T.Text, Bool, Value) -> m (User a)
-convertUserTuple (username, email, isActive, more) =
+convertUserTuple :: (FromJSON a, Monad m) => (T.Text, Password, T.Text, Bool, Value) -> m (User a)
+convertUserTuple (username, password, email, isActive, more) =
     case fromJSON more of
       Error e -> fail e
       Success val ->
-          return $ User username email PasswordHidden isActive val
+          return $ User username email password isActive val

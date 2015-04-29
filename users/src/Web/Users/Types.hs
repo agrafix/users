@@ -58,6 +58,8 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     destroyUserBackend :: b -> IO ()
     -- | This cleans up invalid sessions and other tokens. Call periodically as needed.
     housekeepBackend :: b -> IO ()
+    -- | Retrieve a user id from the database
+    getUserIdByName :: b -> T.Text -> IO (Maybe (UserId b))
     -- | Retrieve a user from the database
     getUserById :: (FromJSON a, ToJSON a) => b -> UserId b -> IO (Maybe (User a))
     -- | List all users (unlimited, or limited)
@@ -82,6 +84,8 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     deleteUser :: b -> UserId b -> IO ()
     -- | Authentificate a user using username/email and password. The 'NominalDiffTime' describes the session duration
     authUser :: b -> T.Text -> PasswordPlain -> NominalDiffTime -> IO (Maybe SessionId)
+    -- | Authentificate a user and execute a single action.
+    withAuthUser :: FromJSON a => b -> T.Text -> (User a -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
     -- | Verify a 'SessionId'. The session duration can be extended by 'NominalDiffTime'
     verifySession :: b -> SessionId -> NominalDiffTime -> IO (Maybe (UserId b))
     -- | Destroy a session

@@ -94,6 +94,8 @@ makeUsersSpec backend =
                                     { dd_foo = False
                                     }
                                 })
+                        userIdA' <- getUserIdByName backend "changed"
+                        userIdA' `shouldBe` Just userIdA
               it "deleting users should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertRight (createUser backend userB) $ \userIdB ->
@@ -123,6 +125,13 @@ makeUsersSpec backend =
                     authUser backend "bar@baz.com" (PasswordPlain "123") 500 `shouldReturn` Nothing
                     authUser backend "bar@baz.com' OR 1 = 1 --" (PasswordPlain "123") 500 `shouldReturn` Nothing
                     authUser backend "bar@baz.com' OR 1 = 1; --" (PasswordPlain  "' OR 1 = 1; --") 500 `shouldReturn` Nothing
+              it "sessionless auth with valid userdata should work" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                 do withAuthUser backend "bar@baz.com" ((== DummyDetails True 21) . u_more) (return . (== userIdA)) `shouldReturn` Just True
+                    withAuthUser backend "bar@baz.com" ((== DummyDetails True 21) . u_more) (return . (/= userIdA)) `shouldReturn` Just False
+              it "sessionless auth with invalid userdata should fail" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                    withAuthUser backend "bar@baz.com" ((/= DummyDetails True 21) . u_more) (return . (/= userIdA)) `shouldReturn` Nothing
               it "destroy session should really remove the session" $
                  withAuthedUser $ \(sessionId, _) ->
                      do destroySession backend sessionId
