@@ -2,10 +2,12 @@ language: haskell
 ghc:
     - 7.6
     - 7.8
+    - '7.10'
 env:
     - TEST_PKG=users
     - TEST_PKG=users-test
     - TEST_PKG=users-postgresql-simple
+    - TEST_PKG=users-persistent
 addons:
     postgresql: "9.3"
 before_install:

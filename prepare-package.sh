@@ -15,6 +15,10 @@ case "$PKG" in
         cabal sandbox add-source ../users
         cabal sandbox add-source ../users-test
         ;;
+    users-persistent)
+        cabal sandbox add-source ../users
+        cabal sandbox add-source ../users-test
+        ;;
     *)
         echo "No sandbox sources to add!"
         ;;
