@@ -38,8 +38,6 @@ import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
-import Debug.Trace
-
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Login
     createdAt UTCTime
@@ -66,7 +64,11 @@ LoginToken
     deriving Typeable
 |]
 
+#if MIN_VERSION_base(4,7,0)
 deriving instance Typeable Key
+#else
+deriving instance Typeable1 Key
+#endif
 
 #if MIN_VERSION_mtl(2,2,0)
 type ErrorT = ExceptT
