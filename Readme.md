@@ -20,6 +20,7 @@ When building a prototype, a small or medium sized Haskell web application with 
 ## Backends
 
 * [postgresql-simple](http://hackage.haskell.org/package/users-postgresql-simple)
+* [persistent](http://hackage.haskell.org/package/users-persistent)
 
 ## Contribution
 
