@@ -18,6 +18,7 @@ description:         Scrap the boilerplate for managing user accounts in web app
                      Current Backends:
                      .
                      * <http://hackage.haskell.org/package/users-postgresql-simple PostgreSQL-Simple Backend>
+                     * <http://hackage.haskell.org/package/users-persistent Persistent Backend>
                      .
 homepage:            https://github.com/agrafix/users
 bug-reports:         https://github.com/agrafix/users/issues
