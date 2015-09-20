@@ -1,0 +1,8 @@
+flags: {}
+packages:
+- users/
+- users-persistent/
+- users-postgresql-simple/
+- users-test/
+extra-deps: []
+resolver: lts-3.4
