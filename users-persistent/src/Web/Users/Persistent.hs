@@ -18,6 +18,8 @@ module Web.Users.Persistent (LoginId, Persistent(..)) where
 
 import Web.Users.Types
 
+import Debug.Trace
+
 import Control.Applicative ((<$>), (<|>))
 import Control.Monad
 import Control.Monad.Reader
@@ -191,16 +193,22 @@ instance UserStorageBackend Persistent where
     withAuthUser conn userOrEmail authFn action =
         runPersistent conn $
         do mFst <- selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
+           traceShowM mFst
            case mFst of
              Nothing -> return Nothing
              Just login ->
                  do user <- unpackLogin' (entityVal login)
                     if authFn user
-                    then liftIO $ Just <$> action (entityKey login)
+                    then do
+                      traceM "in the if branch y'all"
+                      ret <- liftIO $ Just <$> (traceM "adsf" >> action (entityKey login))
+                      return ret
                     else return Nothing
     authUser conn userOrEmail pwd sessionTtl =
-        withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId ->
-            SessionId <$> createToken conn "session" userId sessionTtl
+        withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId -> do
+            tok <- createToken conn "session" userId sessionTtl
+            traceShowM tok
+            return (SessionId tok)
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
            case mUser of
@@ -242,12 +250,19 @@ instance UserStorageBackend Persistent where
                     return $ Right ()
 
 createToken :: Persistent -> String -> LoginId -> NominalDiffTime -> IO T.Text
-createToken conn tokenType userId timeToLive =
-    runPersistent conn $
-    do tok <- liftM (T.pack . UUID.toString) $ liftIO $ UUID.nextRandom
-       now <- liftIO $ getCurrentTime
-       _ <- insert $ LoginToken tok (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
-       return tok
+createToken conn tokenType userId timeToLive = do
+    traceM "in createToken"
+    tok <- UUID.nextRandom
+    traceM $ "Outside runPersistent tok: " ++ show tok
+    asdf <- runPersistent conn $ do
+      let tok' = (T.pack . UUID.toString) tok
+      -- traceShowM tok'
+      --now <- liftIO $ getCurrentTime
+      --a <- insert $ LoginToken tok' (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
+      --traceShowM a
+      return tok'
+    traceM "after runPer"
+    return asdf
 
 deleteToken :: Persistent -> String -> T.Text -> IO ()
 deleteToken conn tokenType token =
