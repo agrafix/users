@@ -1,44 +1,43 @@
-{-# LANGUAGE CPP #-}
-{-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE EmptyDataDecls #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE CPP                        #-}
+{-# LANGUAGE DeriveDataTypeable         #-}
+{-# LANGUAGE EmptyDataDecls             #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE TypeFamilies  #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE QuasiQuotes                #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
+{-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeFamilies               #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
 module Web.Users.Persistent (LoginId, Persistent(..)) where
 
-import Web.Users.Types
+import           Web.Users.Types
 
-import Debug.Trace
-
-import Control.Applicative ((<$>), (<|>))
-import Control.Monad
-import Control.Monad.Reader
+import           Control.Applicative       ((<$>), (<|>))
+import           Control.Monad
+import           Control.Monad.Reader
 #if MIN_VERSION_mtl(2,2,0)
-import Control.Monad.Except
+import           Control.Monad.Except
 #else
-import Control.Monad.Error
+import           Control.Monad.Error
 #endif
-import Data.Aeson
-import Data.Typeable
-import Data.Time.Clock
-import Database.Persist
-import Database.Persist.Sql
-import Database.Persist.TH
-import qualified Data.ByteString.Char8 as BSC
-import qualified Data.ByteString.Lazy as BSL
-import qualified Data.Text as T
-import qualified Data.UUID as UUID
-import qualified Data.UUID.V4 as UUID
+import           Control.Monad.Trans.Maybe
+import           Data.Aeson
+import qualified Data.ByteString.Char8     as BSC
+import qualified Data.ByteString.Lazy      as BSL
+import qualified Data.Text                 as T
+import           Data.Time.Clock
+import           Data.Typeable
+import qualified Data.UUID                 as UUID
+import qualified Data.UUID.V4              as UUID
+import           Database.Persist
+import           Database.Persist.Sql
+import           Database.Persist.TH
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Login
@@ -190,25 +189,16 @@ instance UserStorageBackend Persistent where
                             _ -> return ()
     deleteUser conn userId =
         runPersistent conn $ delete userId
-    withAuthUser conn userOrEmail authFn action =
-        runPersistent conn $
-        do mFst <- selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
-           traceShowM mFst
-           case mFst of
-             Nothing -> return Nothing
-             Just login ->
-                 do user <- unpackLogin' (entityVal login)
-                    if authFn user
-                    then do
-                      traceM "in the if branch y'all"
-                      ret <- liftIO $ Just <$> (traceM "adsf" >> action (entityKey login))
-                      return ret
-                    else return Nothing
+    withAuthUser conn userOrEmail authFn action = runMaybeT $ do
+        mFst <- liftIO $ runPersistent conn $ selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
+        login <- MaybeT . pure $ mFst
+        user <- unpackLogin' $ entityVal login
+        guard $ authFn user
+        liftIO . action . entityKey $ login
     authUser conn userOrEmail pwd sessionTtl =
         withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId -> do
-            tok <- createToken conn "session" userId sessionTtl
-            traceShowM tok
-            return (SessionId tok)
+            tokExec <- createToken' "session" userId sessionTtl
+            SessionId <$> runPersistent conn tokExec
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
            case mUser of
@@ -249,20 +239,21 @@ instance UserStorageBackend Persistent where
                     deleteToken conn "password_reset" token
                     return $ Right ()
 
+createToken' :: MonadIO m => String -> LoginId -> NominalDiffTime -> IO (SqlPersistT m (T.Text))
+createToken' tokenType userId timeToLive =
+    return $ do
+      tok <- liftM (T.pack . UUID.toString) $ liftIO $ UUID.nextRandom
+      now <- liftIO $ getCurrentTime
+      _ <- insert $ LoginToken tok (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
+      return tok
+
 createToken :: Persistent -> String -> LoginId -> NominalDiffTime -> IO T.Text
-createToken conn tokenType userId timeToLive = do
-    traceM "in createToken"
-    tok <- UUID.nextRandom
-    traceM $ "Outside runPersistent tok: " ++ show tok
-    asdf <- runPersistent conn $ do
-      let tok' = (T.pack . UUID.toString) tok
-      -- traceShowM tok'
-      --now <- liftIO $ getCurrentTime
-      --a <- insert $ LoginToken tok' (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
-      --traceShowM a
-      return tok'
-    traceM "after runPer"
-    return asdf
+createToken conn tokenType userId timeToLive =
+    runPersistent conn $ do
+      tok <- liftM (T.pack . UUID.toString) $ liftIO $ UUID.nextRandom
+      now <- liftIO $ getCurrentTime
+      _ <- insert $ LoginToken tok (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
+      return tok
 
 deleteToken :: Persistent -> String -> T.Text -> IO ()
 deleteToken conn tokenType token =
