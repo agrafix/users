@@ -20,6 +20,7 @@ import Web.Users.Types
 
 import Control.Applicative ((<$>), (<|>))
 import Control.Monad
+import Control.Monad.Trans.Maybe
 import Control.Monad.Reader
 #if MIN_VERSION_mtl(2,2,0)
 import Control.Monad.Except
@@ -189,15 +190,12 @@ instance UserStorageBackend Persistent where
     deleteUser conn userId =
         runPersistent conn $ delete userId
     withAuthUser conn userOrEmail authFn action =
-        runPersistent conn $
-        do mFst <- selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
-           case mFst of
-             Nothing -> return Nothing
-             Just login ->
-                 do user <- unpackLogin' (entityVal login)
-                    if authFn user
-                    then liftIO $ Just <$> action (entityKey login)
-                    else return Nothing
+      runMaybeT $
+      do login <- MaybeT . liftIO . runPersistent conn
+                $ selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
+         user <- unpackLogin' $ entityVal login
+         guard $ authFn user
+         liftIO . action . entityKey $ login
     authUser conn userOrEmail pwd sessionTtl =
         withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId ->
             SessionId <$> createToken conn "session" userId sessionTtl
