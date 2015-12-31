@@ -1,43 +1,43 @@
-{-# LANGUAGE CPP                        #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE EmptyDataDecls             #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE GADTs                      #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE EmptyDataDecls #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
-{-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE QuasiQuotes                #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
-{-# LANGUAGE TemplateHaskell            #-}
-{-# LANGUAGE TypeFamilies               #-}
-{-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies  #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 module Web.Users.Persistent (LoginId, Persistent(..)) where
 
-import           Web.Users.Types
+import Web.Users.Types
 
-import           Control.Applicative       ((<$>), (<|>))
-import           Control.Monad
-import           Control.Monad.Reader
+import Control.Applicative ((<$>), (<|>))
+import Control.Monad
+import Control.Monad.Trans.Maybe
+import Control.Monad.Reader
 #if MIN_VERSION_mtl(2,2,0)
-import           Control.Monad.Except
+import Control.Monad.Except
 #else
-import           Control.Monad.Error
+import Control.Monad.Error
 #endif
-import           Control.Monad.Trans.Maybe
-import           Data.Aeson
-import qualified Data.ByteString.Char8     as BSC
-import qualified Data.ByteString.Lazy      as BSL
-import qualified Data.Text                 as T
-import           Data.Time.Clock
-import           Data.Typeable
-import qualified Data.UUID                 as UUID
-import qualified Data.UUID.V4              as UUID
-import           Database.Persist
-import           Database.Persist.Sql
-import           Database.Persist.TH
+import Data.Aeson
+import Data.Typeable
+import Data.Time.Clock
+import Database.Persist
+import Database.Persist.Sql
+import Database.Persist.TH
+import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy as BSL
+import qualified Data.Text as T
+import qualified Data.UUID as UUID
+import qualified Data.UUID.V4 as UUID
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
 Login
@@ -189,12 +189,13 @@ instance UserStorageBackend Persistent where
                             _ -> return ()
     deleteUser conn userId =
         runPersistent conn $ delete userId
-    withAuthUser conn userOrEmail authFn action = runMaybeT $ do
-        mFst <- liftIO $ runPersistent conn $ selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
-        login <- MaybeT . pure $ mFst
-        user <- unpackLogin' $ entityVal login
-        guard $ authFn user
-        liftIO . action . entityKey $ login
+    withAuthUser conn userOrEmail authFn action =
+      runMaybeT $
+      do login <- MaybeT . liftIO . runPersistent conn
+                $ selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
+         user <- unpackLogin' $ entityVal login
+         guard $ authFn user
+         liftIO . action . entityKey $ login
     authUser conn userOrEmail pwd sessionTtl =
         withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId ->
             SessionId <$> createToken conn "session" userId sessionTtl
