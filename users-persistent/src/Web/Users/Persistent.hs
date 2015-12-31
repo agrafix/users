@@ -197,8 +197,7 @@ instance UserStorageBackend Persistent where
         liftIO . action . entityKey $ login
     authUser conn userOrEmail pwd sessionTtl =
         withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId -> do
-            tokExec <- createToken' "session" userId sessionTtl
-            SessionId <$> runPersistent conn tokExec
+            SessionId <$> createToken conn "session" userId sessionTtl
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
            case mUser of
@@ -238,14 +237,6 @@ instance UserStorageBackend Persistent where
                         updateUser conn userId $ \(user :: User Value) -> user { u_password = password }
                     deleteToken conn "password_reset" token
                     return $ Right ()
-
-createToken' :: MonadIO m => String -> LoginId -> NominalDiffTime -> IO (SqlPersistT m (T.Text))
-createToken' tokenType userId timeToLive =
-    return $ do
-      tok <- liftM (T.pack . UUID.toString) $ liftIO $ UUID.nextRandom
-      now <- liftIO $ getCurrentTime
-      _ <- insert $ LoginToken tok (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
-      return tok
 
 createToken :: Persistent -> String -> LoginId -> NominalDiffTime -> IO T.Text
 createToken conn tokenType userId timeToLive =
