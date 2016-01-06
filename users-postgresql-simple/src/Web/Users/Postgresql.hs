@@ -142,16 +142,19 @@ instance UserStorageBackend Connection where
         case u_password user of
           PasswordHash p ->
               do ([(Only emailCounter)], [(Only nameCounter)]) <- (,) <$>
-                     query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? OR email = ?;|] (u_name user, u_email user)
-                     <*> query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? OR email = ?;|] (u_name user, u_email user)
-                 if (emailCounter :: Int64) /= 0
-                 then return $ Left EmailAlreadyTaken
-                 else if (nameCounter :: Int64) /= 0
-                 then return $ Left UsernameAlreadyTaken
-                 else do [(Only userId)] <-
-                             query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, ?, ?, ?, ?) RETURNING lid|]
-                                   (u_name user, p, u_email user, u_active user, toJSON $ u_more user)
-                         return $ Right userId
+                     query conn [sql|SELECT COUNT(lid) FROM login WHERE email = ? LIMIT 1;|] (Only $ u_email user)
+                     <*> query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;|] (Only $ u_name user)
+                 let both f (x, y) = (f x, f y)
+                     bothCount = both (== 1) (emailCounter :: Int64, nameCounter :: Int64)
+                 case bothCount of
+                      (True, True)   -> return $ Left UsernameAndEmailAlreadyTaken
+                      (True, False)  -> return $ Left EmailAlreadyTaken
+                      (False, True)  -> return $ Left UsernameAlreadyTaken
+                      (False, False) ->
+                        do [(Only userId)] <-
+                               query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, ?, ?, ?, ?) RETURNING lid|]
+                                     (u_name user, p, u_email user, u_active user, toJSON $ u_more user)
+                           return $ Right userId
           _ ->
               return $ Left InvalidPassword
     updateUser conn userId updateFun =
