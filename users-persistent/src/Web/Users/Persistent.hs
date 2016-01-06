@@ -1,22 +1,14 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE EmptyDataDecls #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies  #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-module Web.Users.Persistent (LoginId, Persistent(..)) where
+module Web.Users.Persistent (LoginId, Persistent(..), module Definitions) where
 
 import Web.Users.Types
+import Web.Users.Persistent.Definitions as Definitions
 
 import Control.Applicative ((<$>), (<|>))
 import Control.Monad
@@ -39,31 +31,6 @@ import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
 
-share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
-Login
-    createdAt UTCTime
-    username T.Text
-    email T.Text
-    password T.Text
-    active Bool
-    more BSC.ByteString
-    UniqueUsername username
-    UniqueEmail email
-    deriving Show
-    deriving Eq
-    deriving Typeable
-LoginToken
-    token T.Text
-    tokenType T.Text
-    createdAt UTCTime
-    validUntil UTCTime
-    owner LoginId
-    UniqueToken token
-    UniqueTypedToken token tokenType
-    deriving Show
-    deriving Eq
-    deriving Typeable
-|]
 
 #if MIN_VERSION_base(4,7,0)
 deriving instance Typeable Key
