@@ -163,24 +163,27 @@ instance UserStorageBackend Persistent where
               do now <- getCurrentTime
                  let usr = mkUser now
                  runPersistent conn $
-                   do mFst <- selectFirst ([LoginUsername ==. loginUsername usr] ||. [LoginEmail ==. loginEmail usr]) []
-                      case mFst of
-                        Just _ -> return $ Left UsernameOrEmailAlreadyTaken
-                        Nothing -> Right <$> insert usr
+                   do mUsername <- selectFirst [LoginUsername ==. loginUsername usr] []
+                      mEmailAddress <- selectFirst [LoginEmail ==. loginEmail usr] []
+                      case (mUsername, mEmailAddress) of
+                        (Just _, Just _)   -> return $ Left UsernameAndEmailAlreadyTaken
+                        (Just _, _)        -> return $ Left UsernameAlreadyTaken
+                        (Nothing, Just _)  -> return $ Left EmailAlreadyTaken
+                        (Nothing, Nothing) -> Right <$> insert usr
     updateUser conn userId updateFun =
         do mUser <- getUserById conn userId
            case mUser of
              Nothing ->
-                 return $ Left UserDoesntExit
+                 return $ Left UserDoesntExist
              Just origUser ->
                  runErrorT $
                  do let newUser = updateFun origUser
                     when (u_name newUser /= u_name origUser) $
                          do counter <- liftIO $ runPersistent conn $ count [LoginUsername ==. u_name newUser]
-                            when (counter /= 0) $ throwError UsernameOrEmailAlreadyExists
+                            when (counter /= 0) $ throwError UsernameAlreadyExists
                     when (u_email newUser /= u_email origUser) $
                          do counter <- liftIO $ runPersistent conn $ count [LoginEmail ==. u_email newUser]
-                            when (counter /= 0) $ throwError UsernameOrEmailAlreadyExists
+                            when (counter /= 0) $ throwError EmailAlreadyExists
                     liftIO $ runPersistent conn $
                        do update userId [ LoginUsername =. u_name newUser, LoginEmail =. u_email newUser, LoginActive =. u_active newUser
                                         , LoginMore =. (BSL.toStrict $ encode $ u_more newUser) ]
