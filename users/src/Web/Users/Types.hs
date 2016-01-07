@@ -30,16 +30,27 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
 import qualified System.IO.Unsafe as U
 
+{-# DEPRECATED UsernameOrEmailAlreadyTaken "Please use the more specific error constructors." #-}
+
 -- | Errors that happen on storage level during user creation
 data CreateUserError
    = UsernameOrEmailAlreadyTaken
    | InvalidPassword
+   | UsernameAlreadyTaken
+   | EmailAlreadyTaken
+   | UsernameAndEmailAlreadyTaken
    deriving (Show, Eq)
+
+{-# DEPRECATED UsernameOrEmailAlreadyExists "Please use the more descriptive constructors instead." #-}
+{-# DEPRECATED UserDoesntExit "Please use UserDoesntExist instead." #-}
 
 -- | Errors that happen on storage level during user updating
 data UpdateUserError
    = UsernameOrEmailAlreadyExists
+   | UsernameAlreadyExists
+   | EmailAlreadyExists
    | UserDoesntExit
+   | UserDoesntExist
    deriving (Show, Eq)
 
 -- | Errors that happen on storage level during token actions

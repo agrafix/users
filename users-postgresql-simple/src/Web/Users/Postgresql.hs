@@ -141,32 +141,38 @@ instance UserStorageBackend Connection where
     createUser conn user =
         case u_password user of
           PasswordHash p ->
-              do [(Only counter)] <-
-                     query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? OR email = ?;|] (u_name user, u_email user)
-                 if (counter :: Int64) /= 0
-                 then return $ Left UsernameOrEmailAlreadyTaken
-                 else do [(Only userId)] <-
-                             query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, ?, ?, ?, ?) RETURNING lid|]
-                                   (u_name user, p, u_email user, u_active user, toJSON $ u_more user)
-                         return $ Right userId
+              do ([(Only emailCounter)], [(Only nameCounter)]) <- (,) <$>
+                     query conn [sql|SELECT COUNT(lid) FROM login WHERE email = ? LIMIT 1;|] (Only $ u_email user)
+                     <*> query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;|] (Only $ u_name user)
+                 let both f (x, y) = (f x, f y)
+                     bothCount = both (== 1) (emailCounter :: Int64, nameCounter :: Int64)
+                 case bothCount of
+                      (True, True)   -> return $ Left UsernameAndEmailAlreadyTaken
+                      (True, False)  -> return $ Left EmailAlreadyTaken
+                      (False, True)  -> return $ Left UsernameAlreadyTaken
+                      (False, False) ->
+                        do [(Only userId)] <-
+                               query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, ?, ?, ?, ?) RETURNING lid|]
+                                     (u_name user, p, u_email user, u_active user, toJSON $ u_more user)
+                           return $ Right userId
           _ ->
               return $ Left InvalidPassword
     updateUser conn userId updateFun =
         do mUser <- getUserById conn userId
            case mUser of
              Nothing ->
-                 return $ Left UserDoesntExit
+                 return $ Left UserDoesntExist
              Just origUser ->
                  runErrorT $
                  do let newUser = updateFun origUser
                     when (u_name newUser /= u_name origUser) $
                          do [(Only counter)] <-
                                 liftIO $ query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ?;|] (Only $ u_name newUser)
-                            when ((counter :: Int64) /= 0) $ throwError UsernameOrEmailAlreadyExists
+                            when ((counter :: Int64) /= 0) $ throwError UsernameAlreadyExists
                     when (u_email newUser /= u_email origUser) $
                          do [(Only counter)] <-
                                 liftIO $ query conn [sql|SELECT COUNT(lid) FROM login WHERE email = ?;|] (Only $ u_email newUser)
-                            when ((counter :: Int64) /= 0) $ throwError UsernameOrEmailAlreadyExists
+                            when ((counter :: Int64) /= 0) $ throwError EmailAlreadyExists
                     liftIO $
                        do _ <-
                               execute conn [sql|UPDATE login SET username = ?, email = ?, is_active = ?, more = ? WHERE lid = ?;|]

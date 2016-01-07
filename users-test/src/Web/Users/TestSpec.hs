@@ -60,13 +60,13 @@ makeUsersSpec backend =
                  assertRight (createUser backend userB) $ \_ ->
                      do assertLeft (createUser backend (mkUser "foo2" "bar2@baz.com"))
                                        "succeeded to create foo2 bar2 again" $ \err ->
-                            err `shouldBe` UsernameOrEmailAlreadyTaken
+                            err `shouldBe` UsernameAndEmailAlreadyTaken
                         assertLeft (createUser backend (mkUser "foo2" "asdas@baz.com"))
                                        "succeeded to create foo2 with different email again" $ \err ->
-                            err `shouldBe` UsernameOrEmailAlreadyTaken
+                            err `shouldBe` UsernameAlreadyTaken
                         assertLeft (createUser backend (mkUser "asdas" "bar2@baz.com"))
                                        "succeeded to create different user with same email" $ \err ->
-                            err `shouldBe` UsernameOrEmailAlreadyTaken
+                            err `shouldBe` EmailAlreadyTaken
               it "list and count should be correct" $
                  assertRight (createUser backend userA) $ \userId1 ->
                  assertRight (createUser backend userB) $ \userId2 ->
@@ -80,10 +80,10 @@ makeUsersSpec backend =
                      do assertRight (updateUser backend userIdA (\(user :: DummyUser) -> user { u_name = "changed" })) $ const (return ())
                         assertLeft (updateUser backend userIdA (\(user :: DummyUser) -> user { u_name = "foo2" }))
                                        "succeeded to set username to already used username" $ \err ->
-                            err `shouldBe` UsernameOrEmailAlreadyExists
+                            err `shouldBe` UsernameAlreadyExists
                         assertLeft (updateUser backend userIdA (\(user :: DummyUser) -> user { u_email = "bar2@baz.com" }))
                                        "succeeded to set email to already used email" $ \err ->
-                            err `shouldBe` UsernameOrEmailAlreadyExists
+                            err `shouldBe` EmailAlreadyExists
                         updateUserDetails backend userIdA (\d -> d { dd_foo = False })
                         userA' <- getUserById backend userIdA
                         userA' `shouldBe`
