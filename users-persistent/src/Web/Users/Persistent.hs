@@ -5,10 +5,10 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies  #-}
-module Web.Users.Persistent (LoginId, Persistent(..), module Definitions) where
+module Web.Users.Persistent (LoginId, Persistent(..)) where
 
 import Web.Users.Types
-import Web.Users.Persistent.Definitions as Definitions
+import Web.Users.Persistent.Definitions
 
 import Control.Applicative ((<$>), (<|>))
 import Control.Monad
