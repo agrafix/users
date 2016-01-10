@@ -28,6 +28,7 @@ source-repository head
 
 library
   exposed-modules:     Web.Users.Persistent
+                       Web.Users.Persistent.Definitions
   build-depends:       base >=4.6 && <5,
                        persistent >=2.0,
                        persistent-template >=2.1,
