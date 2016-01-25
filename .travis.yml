@@ -1,23 +1,17 @@
 language: haskell
-ghc:
-    - 7.6
-    - 7.8
-env:
-    - TEST_PKG=users
-    - TEST_PKG=users-test
-    - TEST_PKG=users-postgresql-simple
-    - TEST_PKG=users-persistent
+sudo: false
+cache:
+  directories:
+  - $HOME/.stack
 addons:
     postgresql: "9.3"
 before_install:
-    - createdb `whoami`
-    - cabal update
-    - cabal --version
-    - ghc --version
+  # Download and unpack the stack executable
+  - mkdir -p ~/.local/bin
+  - export PATH=$HOME/.local/bin:$PATH
+  - travis_retry curl -L https://www.stackage.org/stack/linux-x86_64 | tar xz --wildcards --strip-components=1 -C ~/.local/bin '*/stack'
 install:
-    - chmod +x ./prepare-package.sh
-    - ./prepare-package.sh $TEST_PKG
+  - ./travis_long stack --no-terminal --skip-ghc-check setup
+  - ./travis_long stack --no-terminal --skip-ghc-check test --only-snapshot
 script:
-    - cd $TEST_PKG
-    - cabal check
-    - cabal test
+  - stack --no-terminal --skip-ghc-check test
