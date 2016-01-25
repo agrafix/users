@@ -49,6 +49,13 @@ assertLeft val msg action =
          Right _ -> expectationFailure msg
          Left v -> action v
 
+assertJust :: IO (Maybe a) -> String -> (a -> IO ()) -> IO ()
+assertJust val msg action =
+    do r <- val
+       case r of
+         Nothing -> expectationFailure msg
+         Just v -> action v
+
 makeUsersSpec :: forall b. UserStorageBackend b => b -> Spec
 makeUsersSpec backend =
     before_ (initUserBackend backend) $
@@ -132,6 +139,9 @@ makeUsersSpec backend =
               it "sessionless auth with invalid userdata should fail" $
                  assertRight (createUser backend userA) $ \userIdA ->
                     withAuthUser backend "bar@baz.com" ((/= DummyDetails True 21) . u_more) (return . (/= userIdA)) `shouldReturn` Nothing
+              it "forcing a session works" $
+                 assertRight (createUser backend userA) $ \userIdA ->
+                 assertJust (createSession backend userIdA 500) "session id missing" $ \_ -> return ()
               it "destroy session should really remove the session" $
                  withAuthedUser $ \(sessionId, _) ->
                      do destroySession backend sessionId

@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeFamilies #-}
@@ -7,7 +8,6 @@ module Web.Users.Postgresql () where
 
 import Web.Users.Types
 
-import Control.Applicative ((<$>))
 import Control.Monad
 #if MIN_VERSION_mtl(2,2,0)
 import Control.Monad.Except
@@ -190,6 +190,11 @@ instance UserStorageBackend Connection where
     authUser conn username password sessionTtl =
         withAuthUser conn username (\(user :: User Value) -> verifyPassword password $ u_password user) $ \userId ->
            SessionId <$> createToken conn "session" userId sessionTtl
+    createSession conn userId sessionTtl =
+        do mUser <- getUserById conn userId
+           case (mUser :: Maybe (User Value)) of
+             Nothing -> return Nothing
+             Just _ -> Just . SessionId <$> createToken conn "session" userId sessionTtl
     withAuthUser conn username authFn action =
         do resultSet <- query conn [sql|SELECT lid, username, password, email, is_active, more FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
            case resultSet of

@@ -17,7 +17,6 @@ module Web.Users.Types
     )
 where
 
-import Control.Applicative
 import Crypto.BCrypt
 import Data.Aeson
 import Data.Int
@@ -99,6 +98,9 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     withAuthUser :: FromJSON a => b -> T.Text -> (User a -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
     -- | Verify a 'SessionId'. The session duration can be extended by 'NominalDiffTime'
     verifySession :: b -> SessionId -> NominalDiffTime -> IO (Maybe (UserId b))
+    -- | Force create a session for a user. This is useful for support/admin login.
+    -- If the user does not exist, this will fail.
+    createSession :: b -> UserId b -> NominalDiffTime -> IO (Maybe SessionId)
     -- | Destroy a session
     destroySession :: b -> SessionId -> IO ()
     -- | Request a 'PasswordResetToken' for a given user, valid for 'NominalDiffTime'

@@ -10,7 +10,7 @@ module Web.Users.Persistent (LoginId, Persistent(..)) where
 import Web.Users.Types
 import Web.Users.Persistent.Definitions
 
-import Control.Applicative ((<$>), (<|>))
+import Control.Applicative ((<|>))
 import Control.Monad
 import Control.Monad.Trans.Maybe
 import Control.Monad.Reader
@@ -24,8 +24,6 @@ import Data.Typeable
 import Data.Time.Clock
 import Database.Persist
 import Database.Persist.Sql
-import Database.Persist.TH
-import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Text as T
 import qualified Data.UUID as UUID
@@ -176,6 +174,11 @@ instance UserStorageBackend Persistent where
              Just userId ->
                  do extendToken conn "session" sessionId extendTime
                     return (Just userId)
+    createSession conn userId sessionTtl =
+        do mUser <- getUserById conn userId
+           case (mUser :: Maybe (User Value)) of
+             Nothing -> return Nothing
+             Just _ -> Just . SessionId <$> createToken conn "session" userId sessionTtl
     destroySession conn (SessionId sessionId) = deleteToken conn "session" sessionId
     requestPasswordReset conn userId timeToLive =
         do token <- createToken conn "password_reset" userId timeToLive

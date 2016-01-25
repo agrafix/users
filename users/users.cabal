@@ -1,5 +1,5 @@
 name:                users
-version:             0.3.0.0
+version:             0.4.0.0
 synopsis:            A library simplifying user management for web applications
 description:         Scrap the boilerplate for managing user accounts in web applications
                      .
