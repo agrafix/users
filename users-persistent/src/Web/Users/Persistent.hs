@@ -226,7 +226,7 @@ createToken :: Persistent -> String -> LoginId -> NominalDiffTime -> IO T.Text
 createToken conn tokenType userId timeToLive =
     runPersistent conn $
     do tok <- liftM (T.pack . UUID.toString) $ liftIO $ UUID.nextRandom
-       now <- liftIO $ getCurrentTime
+       now <- liftIO getCurrentTime
        _ <- insert $ LoginToken tok (T.pack tokenType) now (timeToLive `addUTCTime` now) userId
        return tok
 
@@ -245,9 +245,19 @@ extendToken conn tokenType token timeToLive =
     case UUID.fromString (T.unpack token) of
       Nothing -> return ()
       Just _ ->
-          do now <- liftIO $ getCurrentTime
-             updateWhere [LoginTokenToken ==. token, LoginTokenTokenType ==. (T.pack tokenType)] [LoginTokenValidUntil =. (timeToLive `addUTCTime` now)]
-             return ()
+        do let selC = [LoginTokenTokenType ==. T.pack tokenType, LoginTokenToken ==. token]
+           m <-
+             selectFirst selC [Desc LoginTokenValidUntil]
+           case m of
+             Nothing -> return ()
+             Just t ->
+               do let validUntil =
+                        loginTokenValidUntil (entityVal t)
+                  now <- liftIO getCurrentTime
+                  let extendedValid = timeToLive `addUTCTime` now
+                  when (extendedValid > validUntil) $
+                      updateWhere selC [LoginTokenValidUntil =. extendedValid]
+                  return ()
 
 getTokenOwner :: Persistent -> String -> T.Text -> IO (Maybe LoginId)
 getTokenOwner conn tokenType token =

@@ -286,7 +286,12 @@ extendToken conn tokenType token timeToLive =
       Nothing -> return ()
       Just uuid ->
           do _ <-
-                  execute conn [sql|UPDATE login_token SET valid_until = valid_until + '? seconds' WHERE token_type = ? AND token = ?;|] (convertTtl timeToLive, tokenType, uuid)
+                  execute conn [sql|
+                                   UPDATE login_token
+                                   SET valid_until =
+                                            (CASE WHEN NOW() + '? seconds' > valid_until THEN NOW() + '? seconds' ELSE valid_until END)
+                                   WHERE token_type = ?
+                                   AND token = ?;|] (convertTtl timeToLive, convertTtl timeToLive, tokenType, uuid)
              return ()
 
 getTokenOwner :: Connection -> String -> T.Text -> IO (Maybe Int64)
