@@ -77,10 +77,16 @@ makeUsersSpec backend =
               it "list and count should be correct" $
                  assertRight (createUser backend userA) $ \userId1 ->
                  assertRight (createUser backend userB) $ \userId2 ->
-                 do allUsers <- listUsers backend Nothing
+                 do allUsers <- listUsers backend Nothing (SortAsc UserFieldId)
                     unless ((userId1, hidePassword userA) `elem` allUsers && (userId2, hidePassword userB) `elem` allUsers)
                            (expectationFailure $ "create users not in user list:" ++ show allUsers)
                     countUsers backend `shouldReturn` 2
+              it "sorting should work" $
+                 assertRight (createUser backend userA) $ \_ ->
+                 assertRight (createUser backend userB) $ \_ ->
+                 assertRight (createUser backend userC) $ \userId3 ->
+                 do allUsers <- listUsers backend Nothing (SortAsc UserFieldName)
+                    head allUsers `shouldBe` (userId3, hidePassword userC)
               it "updating and loading users should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertRight (createUser backend userB) $ \_ ->
@@ -107,7 +113,8 @@ makeUsersSpec backend =
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertRight (createUser backend userB) $ \userIdB ->
                      do deleteUser backend userIdA
-                        (allUsers :: [(UserId b, DummyUser)]) <- listUsers backend Nothing
+                        (allUsers :: [(UserId b, DummyUser)]) <-
+                          listUsers backend Nothing (SortAsc UserFieldId)
                         map fst allUsers `shouldBe` [userIdB]
                         getUserById backend userIdA `shouldReturn` (Nothing :: Maybe DummyUser)
               it "reusing a deleted users name should work" $
@@ -219,6 +226,7 @@ makeUsersSpec backend =
       seconds x = x * 1000000
       userA = mkUser "foo" "bar@baz.com"
       userB = mkUser "foo2" "bar2@baz.com"
+      userC = mkUser "alex" "aaaa@bbbbbb.com"
       withAuthedUser = withAuthedUser' "foo" "1234" 500 0
       withAuthedUserT = withAuthedUser' "foo" "1234"
       withAuthedUser' username pass sTime extTime action =

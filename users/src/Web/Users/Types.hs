@@ -3,31 +3,35 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ConstraintKinds #-}
 module Web.Users.Types
     ( -- * The core type class
       UserStorageBackend (..)
       -- * User representation
     , User(..), Password(..), makePassword, hidePassword
     , PasswordPlain(..), verifyPassword
+    , UserField(..)
       -- * Token types
     , PasswordResetToken(..), ActivationToken(..), SessionId(..)
       -- * Error types
     , CreateUserError(..), UpdateUserError(..)
     , TokenError(..)
+      -- * Helper typed
+    , SortBy(..)
     )
 where
 
-import           Crypto.BCrypt
-import           Data.Aeson
-import           Data.Int
-import           Data.Maybe
-import           Data.String
-import qualified Data.Text          as T
+import Crypto.BCrypt
+import Data.Aeson
+import Data.Int
+import Data.Maybe
+import Data.String
+import Data.Time.Clock
+import Data.Typeable
+import Web.PathPieces
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
-import           Data.Time.Clock
-import           Data.Typeable
-import qualified System.IO.Unsafe   as U
-import           Web.PathPieces
+import qualified System.IO.Unsafe as U
 
 -- | Errors that happen on storage level during user creation
 data CreateUserError
@@ -49,12 +53,28 @@ data TokenError
    = TokenInvalid
    deriving (Show, Eq)
 
+-- | Sorting direction
+data SortBy t
+   = SortAsc t
+   | SortDesc t
+
+-- | Backend constraints
+type IsUserBackend b =
+  ( Show (UserId b)
+  , Eq (UserId b)
+  , ToJSON (UserId b)
+  , FromJSON (UserId b)
+  , Typeable (UserId b)
+  , PathPiece (UserId b)
+  )
+
 -- | An abstract backend for managing users. A backend library should implement the interface and
 -- an end user should build applications on top of this interface.
-class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), Typeable (UserId b), PathPiece (UserId b)) => UserStorageBackend b where
+class IsUserBackend b => UserStorageBackend b where
     -- | The storage backends userid
     type UserId b :: *
-    -- | Initialise the backend. Call once on application launch to for example create missing database tables
+    -- | Initialise the backend. Call once on application launch to for
+    -- example create missing database tables
     initUserBackend :: b -> IO ()
     -- | Destory the backend. WARNING: This is only for testing! It deletes all tables and data.
     destroyUserBackend :: b -> IO ()
@@ -64,8 +84,9 @@ class (Show (UserId b), Eq (UserId b), ToJSON (UserId b), FromJSON (UserId b), T
     getUserIdByName :: b -> T.Text -> IO (Maybe (UserId b))
     -- | Retrieve a user from the database
     getUserById :: (FromJSON a, ToJSON a) => b -> UserId b -> IO (Maybe (User a))
-    -- | List all users (unlimited, or limited)
-    listUsers :: (FromJSON a, ToJSON a) => b -> Maybe (Int64, Int64) -> IO [(UserId b, User a)]
+    -- | List all users unlimited, or limited, sorted by a 'UserField'
+    listUsers ::
+      (FromJSON a, ToJSON a) => b -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId b, User a)]
     -- | Count all users
     countUsers :: b -> IO Int64
     -- | Create a user
@@ -161,6 +182,15 @@ data Password
 hidePassword :: User a -> User a
 hidePassword user =
     user { u_password = PasswordHidden }
+
+-- | Fields of user datatype
+data UserField
+   = UserFieldId
+   | UserFieldName
+   | UserFieldEmail
+   | UserFieldPassword
+   | UserFieldActive
+     deriving (Show, Eq)
 
 -- | Core user datatype. Store custom information in the 'u_more' field
 data User a

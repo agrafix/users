@@ -82,6 +82,22 @@ instance Error UpdateUserError where
     strMsg = error "Calling fail not supported"
 #endif
 
+getSqlField :: UserField -> BSC.ByteString
+getSqlField userField =
+    case userField of
+      UserFieldId -> "lid"
+      UserFieldActive -> "is_active"
+      UserFieldEmail -> "email"
+      UserFieldName -> "username"
+      UserFieldPassword -> "password"
+
+getOrderBy :: SortBy UserField -> BSC.ByteString
+getOrderBy sb =
+    "ORDER BY " <>
+    case sb of
+      SortAsc t -> getSqlField t <> " ASC"
+      SortDesc t -> getSqlField t <> " DESC"
+
 instance UserStorageBackend Connection where
     type UserId Connection = Int64
     initUserBackend conn =
@@ -118,15 +134,17 @@ instance UserStorageBackend Connection where
              ((username, email, is_active, more) : _) ->
                  return $ convertUserTuple (username, PasswordHidden, email, is_active, more)
              _ -> return Nothing
-    listUsers conn mLimit =
+    listUsers conn mLimit sortField =
         do let limitPart =
                    case mLimit of
                      Nothing -> ""
                      Just (start, count) ->
                          (Query $ BSC.pack $ " LIMIT " ++ show start ++ ", " ++ show count)
+               sortPart =
+                   Query $ " " <> getOrderBy sortField <> " "
                baseQuery =
                    [sql|SELECT lid, username, email, is_active, more FROM login|]
-               fullQuery = baseQuery <> limitPart
+               fullQuery = baseQuery <> sortPart <> limitPart
                convertUser (lid, username, email, isActive, more) =
                    do user <- convertUserTuple (username, PasswordHidden, email, isActive, more)
                       return (lid, user)

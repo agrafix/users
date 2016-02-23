@@ -88,6 +88,15 @@ mkTuple entity =
     do user <- unpackLogin (entityVal entity)
        return (entityKey entity, user)
 
+compileField :: UserField -> (forall t. EntityField Login t -> a) -> a
+compileField fld f =
+    case fld of
+      UserFieldId -> f LoginId
+      UserFieldActive -> f LoginActive
+      UserFieldEmail -> f LoginEmail
+      UserFieldName -> f LoginUsername
+      UserFieldPassword -> f LoginPassword
+
 newtype Persistent = Persistent { runPersistent :: forall a. SqlPersistT IO a -> IO a }
 
 instance UserStorageBackend Persistent where
@@ -111,12 +120,21 @@ instance UserStorageBackend Persistent where
         runPersistent conn $
         do mUser <- get loginId
            return $ join $ fmap unpackLogin mUser
-    listUsers conn mLimit =
+    listUsers conn mLimit sorter =
         runPersistent conn $
-        do xs <-
+        do let orderOpts =
+                 case sorter of
+                   SortAsc t -> compileField t Asc
+                   SortDesc t -> compileField t Desc
+           xs <-
                case mLimit of
-                 Nothing -> selectList [] []
-                 Just (start, lim) -> selectList [] [OffsetBy (fromIntegral start), LimitTo (fromIntegral lim)]
+                 Nothing -> selectList [] [orderOpts]
+                 Just (start, lim) ->
+                   selectList []
+                   [ orderOpts
+                   , OffsetBy (fromIntegral start)
+                   , LimitTo (fromIntegral lim)
+                   ]
            mapM mkTuple xs
     countUsers conn =
         liftM fromIntegral $
