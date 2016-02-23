@@ -17,38 +17,30 @@ module Web.Users.Types
     )
 where
 
-import Crypto.BCrypt
-import Data.Aeson
-import Data.Int
-import Data.Maybe
-import Data.String
-import Data.Time.Clock
-import Data.Typeable
-import Web.PathPieces
-import qualified Data.Text as T
+import           Crypto.BCrypt
+import           Data.Aeson
+import           Data.Int
+import           Data.Maybe
+import           Data.String
+import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
-import qualified System.IO.Unsafe as U
-
-{-# DEPRECATED UsernameOrEmailAlreadyTaken "Please use the more specific error constructors." #-}
+import           Data.Time.Clock
+import           Data.Typeable
+import qualified System.IO.Unsafe   as U
+import           Web.PathPieces
 
 -- | Errors that happen on storage level during user creation
 data CreateUserError
-   = UsernameOrEmailAlreadyTaken
-   | InvalidPassword
+   = InvalidPassword
    | UsernameAlreadyTaken
    | EmailAlreadyTaken
    | UsernameAndEmailAlreadyTaken
    deriving (Show, Eq)
 
-{-# DEPRECATED UsernameOrEmailAlreadyExists "Please use the more descriptive constructors instead." #-}
-{-# DEPRECATED UserDoesntExit "Please use UserDoesntExist instead." #-}
-
 -- | Errors that happen on storage level during user updating
 data UpdateUserError
-   = UsernameOrEmailAlreadyExists
-   | UsernameAlreadyExists
+   = UsernameAlreadyExists
    | EmailAlreadyExists
-   | UserDoesntExit
    | UserDoesntExist
    deriving (Show, Eq)
 
