@@ -40,7 +40,7 @@ library
   build-depends:
                        aeson >=0.7,
                        base >=4.6 && <5,
-                       bcrypt >=0.0.6,
+                       bcrypt >=0.0.8,
                        path-pieces >=0.1,
                        text >=1.2,
                        time >=1.4
