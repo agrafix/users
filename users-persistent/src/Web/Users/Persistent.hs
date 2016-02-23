@@ -19,12 +19,10 @@ import Control.Monad.Except
 #else
 import Control.Monad.Error
 #endif
-import Data.Aeson
 import Data.Typeable
 import Data.Time.Clock
 import Database.Persist
 import Database.Persist.Sql
-import qualified Data.ByteString.Lazy as BSL
 import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
@@ -47,7 +45,7 @@ instance Error UpdateUserError where
     strMsg = error "Calling fail not supported"
 #endif
 
-packLogin :: (Monad m, ToJSON a) => User a -> m (UTCTime -> Login)
+packLogin :: Monad m => User -> m (UTCTime -> Login)
 packLogin usr =
     do p <-
            case u_password usr of
@@ -59,34 +57,26 @@ packLogin usr =
            , loginEmail = u_email usr
            , loginPassword = p
            , loginActive = u_active usr
-           , loginMore = BSL.toStrict $ encode (u_more usr)
            , loginCreatedAt = t
            }
 
-unpackLogin :: (FromJSON a, Monad m) => Login -> m (User a)
+unpackLogin :: Login -> User
 unpackLogin l =
-    do up <- unpackLogin' l
-       return $ up { u_password = PasswordHidden }
+    (unpackLogin' l) { u_password = PasswordHidden }
 
-unpackLogin' :: (FromJSON a, Monad m) => Login -> m (User a)
+unpackLogin' :: Login -> User
 unpackLogin' l =
-    do more <-
-           case eitherDecodeStrict' (loginMore l) of
-             Left err -> fail err
-             Right val -> return val
-       return $
-            User
-            { u_name = loginUsername l
-            , u_email = loginEmail l
-            , u_password = PasswordHash (loginPassword l)
-            , u_active = loginActive l
-            , u_more = more
-            }
+    User
+    { u_name = loginUsername l
+    , u_email = loginEmail l
+    , u_password = PasswordHash (loginPassword l)
+    , u_active = loginActive l
+    }
 
-mkTuple :: (FromJSON a, Monad m) => Entity Login -> m (LoginId, User a)
+mkTuple :: Entity Login -> (LoginId, User)
 mkTuple entity =
-    do user <- unpackLogin (entityVal entity)
-       return (entityKey entity, user)
+    let user = unpackLogin (entityVal entity)
+    in (entityKey entity, user)
 
 compileField :: UserField -> (forall t. EntityField Login t -> a) -> a
 compileField fld f =
@@ -119,7 +109,7 @@ instance UserStorageBackend Persistent where
     getUserById conn loginId =
         runPersistent conn $
         do mUser <- get loginId
-           return $ join $ fmap unpackLogin mUser
+           return $ fmap unpackLogin mUser
     listUsers conn mLimit sorter =
         runPersistent conn $
         do let orderOpts =
@@ -135,7 +125,7 @@ instance UserStorageBackend Persistent where
                    , OffsetBy (fromIntegral start)
                    , LimitTo (fromIntegral lim)
                    ]
-           mapM mkTuple xs
+           return $ map mkTuple xs
     countUsers conn =
         liftM fromIntegral $
         runPersistent conn $ count ([] :: [Filter Login])
@@ -168,8 +158,10 @@ instance UserStorageBackend Persistent where
                          do counter <- liftIO $ runPersistent conn $ count [LoginEmail ==. u_email newUser]
                             when (counter /= 0) $ throwError EmailAlreadyExists
                     liftIO $ runPersistent conn $
-                       do update userId [ LoginUsername =. u_name newUser, LoginEmail =. u_email newUser, LoginActive =. u_active newUser
-                                        , LoginMore =. (BSL.toStrict $ encode $ u_more newUser) ]
+                       do update userId [ LoginUsername =. u_name newUser
+                                        , LoginEmail =. u_email newUser
+                                        , LoginActive =. u_active newUser
+                                        ]
                           case u_password newUser of
                             PasswordHash p -> update userId [ LoginPassword =. p ]
                             _ -> return ()
@@ -179,11 +171,11 @@ instance UserStorageBackend Persistent where
       runMaybeT $
       do login <- MaybeT . liftIO . runPersistent conn
                 $ selectFirst ([LoginUsername ==. userOrEmail] ||. [LoginEmail ==. userOrEmail]) []
-         user <- unpackLogin' $ entityVal login
+         let user = unpackLogin' $ entityVal login
          guard $ authFn user
          liftIO . action . entityKey $ login
     authUser conn userOrEmail pwd sessionTtl =
-        withAuthUser conn userOrEmail (\(user :: User Value) -> verifyPassword pwd $ u_password user) $ \userId ->
+        withAuthUser conn userOrEmail (\user -> verifyPassword pwd $ u_password user) $ \userId ->
             SessionId <$> createToken conn "session" userId sessionTtl
     verifySession conn (SessionId sessionId) extendTime =
         do mUser <- getTokenOwner conn "session" sessionId
@@ -194,7 +186,7 @@ instance UserStorageBackend Persistent where
                     return (Just userId)
     createSession conn userId sessionTtl =
         do mUser <- getUserById conn userId
-           case (mUser :: Maybe (User Value)) of
+           case (mUser :: Maybe User) of
              Nothing -> return Nothing
              Just _ -> Just . SessionId <$> createToken conn "session" userId sessionTtl
     destroySession conn (SessionId sessionId) = deleteToken conn "session" sessionId
@@ -211,7 +203,7 @@ instance UserStorageBackend Persistent where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \(user :: User Value) -> user { u_active = True }
+                        updateUser conn userId $ \user -> user { u_active = True }
                     deleteToken conn "activation" token
                     return $ Right ()
     verifyPasswordResetToken conn (PasswordResetToken token) =
@@ -226,7 +218,7 @@ instance UserStorageBackend Persistent where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \(user :: User Value) -> user { u_password = password }
+                        updateUser conn userId $ \user -> user { u_password = password }
                     deleteToken conn "password_reset" token
                     return $ Right ()
 

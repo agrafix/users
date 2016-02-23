@@ -83,32 +83,21 @@ class IsUserBackend b => UserStorageBackend b where
     -- | Retrieve a user id from the database
     getUserIdByName :: b -> T.Text -> IO (Maybe (UserId b))
     -- | Retrieve a user from the database
-    getUserById :: (FromJSON a, ToJSON a) => b -> UserId b -> IO (Maybe (User a))
+    getUserById :: b -> UserId b -> IO (Maybe User)
     -- | List all users unlimited, or limited, sorted by a 'UserField'
-    listUsers ::
-      (FromJSON a, ToJSON a) => b -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId b, User a)]
+    listUsers :: b -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId b, User)]
     -- | Count all users
     countUsers :: b -> IO Int64
     -- | Create a user
-    createUser :: (FromJSON a, ToJSON a) => b -> User a -> IO (Either CreateUserError (UserId b))
+    createUser :: b -> User -> IO (Either CreateUserError (UserId b))
     -- | Modify a user
-    updateUser :: (FromJSON a, ToJSON a) => b -> UserId b -> (User a -> User a) -> IO (Either UpdateUserError ())
-    -- | Modify details of a user
-    updateUserDetails :: (FromJSON a, ToJSON a) => b -> UserId b -> (a -> a) -> IO ()
-    updateUserDetails backend userId f =
-        do _ <-
-               updateUser backend userId $
-                              \user ->
-                                  user
-                                  { u_more = f (u_more user)
-                                  }
-           return ()
+    updateUser :: b -> UserId b -> (User -> User) -> IO (Either UpdateUserError ())
     -- | Delete a user
     deleteUser :: b -> UserId b -> IO ()
     -- | Authentificate a user using username/email and password. The 'NominalDiffTime' describes the session duration
     authUser :: b -> T.Text -> PasswordPlain -> NominalDiffTime -> IO (Maybe SessionId)
     -- | Authentificate a user and execute a single action.
-    withAuthUser :: FromJSON a => b -> T.Text -> (User a -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
+    withAuthUser :: b -> T.Text -> (User -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
     -- | Verify a 'SessionId'. The session duration can be extended by 'NominalDiffTime'
     verifySession :: b -> SessionId -> NominalDiffTime -> IO (Maybe (UserId b))
     -- | Force create a session for a user. This is useful for support/admin login.
@@ -119,7 +108,7 @@ class IsUserBackend b => UserStorageBackend b where
     -- | Request a 'PasswordResetToken' for a given user, valid for 'NominalDiffTime'
     requestPasswordReset :: b -> UserId b -> NominalDiffTime -> IO PasswordResetToken
     -- | Check if a 'PasswordResetToken' is still valid and retrieve the owner of it
-    verifyPasswordResetToken :: (FromJSON a, ToJSON a) => b -> PasswordResetToken -> IO (Maybe (User a))
+    verifyPasswordResetToken :: b -> PasswordResetToken -> IO (Maybe User)
     -- | Apply a new password to the owner of 'PasswordResetToken' iff the token is still valid
     applyNewPassword :: b -> PasswordResetToken -> Password -> IO (Either TokenError ())
     -- | Request an 'ActivationToken' for a given user, valid for 'NominalDiffTime'
@@ -179,7 +168,7 @@ data Password
     deriving (Show, Eq, Typeable)
 
 -- | Strip the password from the user type.
-hidePassword :: User a -> User a
+hidePassword :: User -> User
 hidePassword user =
     user { u_password = PasswordHidden }
 
@@ -192,33 +181,30 @@ data UserField
    | UserFieldActive
      deriving (Show, Eq)
 
--- | Core user datatype. Store custom information in the 'u_more' field
-data User a
+-- | Core user datatype
+data User
    = User
    { u_name :: !T.Text
    , u_email :: !T.Text
    , u_password :: !Password
    , u_active :: !Bool
-   , u_more :: !a
    } deriving (Show, Eq, Typeable)
 
-instance ToJSON a => ToJSON (User a) where
-    toJSON (User name email _ active more) =
+instance ToJSON User where
+    toJSON (User name email _ active) =
         object
         [ "name" .= name
         , "email" .= email
         , "active" .= active
-        , "more" .= more
         ]
 
-instance FromJSON a => FromJSON (User a) where
+instance FromJSON User where
     parseJSON =
         withObject "User" $ \obj ->
             User <$> obj .: "name"
                  <*> obj .: "email"
                  <*> (parsePassword <$> (obj .:? "password"))
                  <*> obj .: "active"
-                 <*> obj .: "more"
         where
           parsePassword maybePass =
               case maybePass of

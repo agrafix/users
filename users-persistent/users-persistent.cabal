@@ -35,7 +35,6 @@ library
                        users >=0.5,
                        transformers >=0.4,
                        mtl >=2.1,
-                       aeson >=0.7,
                        time >=1.4,
                        bytestring >=0.10,
                        text >=1.2,

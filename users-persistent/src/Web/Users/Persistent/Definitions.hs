@@ -18,7 +18,6 @@ module Web.Users.Persistent.Definitions where
 import Database.Persist.TH
 import Data.Time.Clock
 import Data.Typeable
-import qualified Data.ByteString.Char8 as BSC
 import qualified Data.Text as T
 
 share [mkPersist sqlSettings, mkMigrate "migrateAll"] [persistLowerCase|
@@ -28,7 +27,6 @@ Login
     email T.Text
     password T.Text
     active Bool
-    more BSC.ByteString
     UniqueUsername username
     UniqueEmail email
     deriving Show

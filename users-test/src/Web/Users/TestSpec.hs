@@ -1,6 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DeriveGeneric #-}
 module Web.Users.TestSpec
     ( makeUsersSpec )
 where
@@ -9,30 +8,16 @@ import Web.Users.Types
 
 import Control.Concurrent (threadDelay)
 import Control.Monad
-import Data.Aeson
-import GHC.Generics
 import Test.Hspec
 import qualified Data.Text as T
 
-type DummyUser = User DummyDetails
-
-data DummyDetails
-   = DummyDetails
-   { dd_foo :: Bool
-   , _dd_bar :: Int
-   } deriving (Show, Eq, Generic)
-
-instance FromJSON DummyDetails
-instance ToJSON DummyDetails
-
-mkUser :: T.Text -> T.Text -> DummyUser
+mkUser :: T.Text -> T.Text -> User
 mkUser name email =
     User
     { u_name = name
     , u_email = email
     , u_password = makePassword "1234"
     , u_active = False
-    , u_more = DummyDetails True 21
     }
 
 assertRight :: Show a => IO (Either a b) -> (b -> IO ()) -> IO ()
@@ -90,22 +75,17 @@ makeUsersSpec backend =
               it "updating and loading users should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertRight (createUser backend userB) $ \_ ->
-                     do assertRight (updateUser backend userIdA (\(user :: DummyUser) -> user { u_name = "changed" })) $ const (return ())
-                        assertLeft (updateUser backend userIdA (\(user :: DummyUser) -> user { u_name = "foo2" }))
+                     do assertRight (updateUser backend userIdA (\user -> user { u_name = "changed" })) $ const (return ())
+                        assertLeft (updateUser backend userIdA (\user -> user { u_name = "foo2" }))
                                        "succeeded to set username to already used username" $ \err ->
                             err `shouldBe` UsernameAlreadyExists
-                        assertLeft (updateUser backend userIdA (\(user :: DummyUser) -> user { u_email = "bar2@baz.com" }))
+                        assertLeft (updateUser backend userIdA (\user -> user { u_email = "bar2@baz.com" }))
                                        "succeeded to set email to already used email" $ \err ->
                             err `shouldBe` EmailAlreadyExists
-                        updateUserDetails backend userIdA (\d -> d { dd_foo = False })
                         userA' <- getUserById backend userIdA
                         userA' `shouldBe`
                                (Just $ (hidePassword userA)
                                 { u_name = "changed"
-                                , u_more =
-                                    (u_more userA)
-                                    { dd_foo = False
-                                    }
                                 })
                         userIdA' <- getUserIdByName backend "changed"
                         userIdA' `shouldBe` Just userIdA
@@ -113,10 +93,10 @@ makeUsersSpec backend =
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertRight (createUser backend userB) $ \userIdB ->
                      do deleteUser backend userIdA
-                        (allUsers :: [(UserId b, DummyUser)]) <-
+                        (allUsers :: [(UserId b, User)]) <-
                           listUsers backend Nothing (SortAsc UserFieldId)
                         map fst allUsers `shouldBe` [userIdB]
-                        getUserById backend userIdA `shouldReturn` (Nothing :: Maybe DummyUser)
+                        getUserById backend userIdA `shouldReturn` (Nothing :: Maybe User)
               it "reusing a deleted users name should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
                      do deleteUser backend userIdA
@@ -141,11 +121,14 @@ makeUsersSpec backend =
                     authUser backend "bar@baz.com' OR 1 = 1; --" (PasswordPlain  "' OR 1 = 1; --") 500 `shouldReturn` Nothing
               it "sessionless auth with valid userdata should work" $
                  assertRight (createUser backend userA) $ \userIdA ->
-                 do withAuthUser backend "bar@baz.com" ((== DummyDetails True 21) . u_more) (return . (== userIdA)) `shouldReturn` Just True
-                    withAuthUser backend "bar@baz.com" ((== DummyDetails True 21) . u_more) (return . (/= userIdA)) `shouldReturn` Just False
+                 do withAuthUser backend "bar@baz.com" ((== "bar@baz.com") . u_email)
+                      (return . (== userIdA)) `shouldReturn` Just True
+                    withAuthUser backend "bar@baz.com" ((== "bar@baz.com") . u_email)
+                      (return . (/= userIdA)) `shouldReturn` Just False
               it "sessionless auth with invalid userdata should fail" $
                  assertRight (createUser backend userA) $ \userIdA ->
-                    withAuthUser backend "bar@baz.com" ((/= DummyDetails True 21) . u_more) (return . (/= userIdA)) `shouldReturn` Nothing
+                    withAuthUser backend "bar@baz.com" ((/= "bar@baz.com") . u_email)
+                      (return . (/= userIdA)) `shouldReturn` Nothing
               it "forcing a session works" $
                  assertRight (createUser backend userA) $ \userIdA ->
                  assertJust (createSession backend userIdA 500) "session id missing" $ \_ -> return ()
@@ -166,13 +149,13 @@ makeUsersSpec backend =
           do it "generates a valid token for a user" $
                 assertRight (createUser backend userA) $ \userIdA ->
                     do token <- requestPasswordReset backend userIdA 500
-                       verifyPasswordResetToken backend token `shouldReturn` (Just (hidePassword userA) :: Maybe DummyUser)
+                       verifyPasswordResetToken backend token `shouldReturn` (Just (hidePassword userA) :: Maybe User)
              it "a valid token should reset the password" $
                 assertRight (createUser backend userA) $ \userIdA ->
                     do withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- old login
                        token <- requestPasswordReset backend userIdA 500
                        housekeepBackend backend
-                       verifyPasswordResetToken backend token `shouldReturn` (Just (hidePassword userA) :: Maybe DummyUser)
+                       verifyPasswordResetToken backend token `shouldReturn` (Just (hidePassword userA) :: Maybe User)
                        assertRight (applyNewPassword backend token $ makePassword "foobar") $ const $ return ()
                        withAuthedUserNoCreate "foo" "foobar" 500 0 userIdA $ const (return ()) -- new login
              it "expired tokens should not do any harm" $
@@ -180,7 +163,7 @@ makeUsersSpec backend =
                     do withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- old login
                        token <- requestPasswordReset backend userIdA 1
                        threadDelay (seconds 1)
-                       verifyPasswordResetToken backend token `shouldReturn` (Nothing :: Maybe DummyUser)
+                       verifyPasswordResetToken backend token `shouldReturn` (Nothing :: Maybe User)
                        assertLeft (applyNewPassword backend token $ makePassword "foobar")
                                       "Reset password with expired token" $ const $ return ()
                        withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- still old login
@@ -188,7 +171,7 @@ makeUsersSpec backend =
                 assertRight (createUser backend userA) $ \userIdA ->
                     do withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- old login
                        let token = PasswordResetToken "Foooooooo!!!!"
-                       verifyPasswordResetToken backend token `shouldReturn` (Nothing :: Maybe DummyUser)
+                       verifyPasswordResetToken backend token `shouldReturn` (Nothing :: Maybe User)
                        assertLeft (applyNewPassword backend token $ makePassword "foobar")
                                       "Reset password with random token" $ const $ return ()
                        withAuthedUserNoCreate "foo" "1234" 500 0 userIdA $ const (return ()) -- still old login

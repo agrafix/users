@@ -14,7 +14,6 @@ import Control.Monad.Except
 #else
 import Control.Monad.Error
 #endif
-import Data.Aeson
 import Data.Int
 import Data.Maybe
 import Data.Monoid
@@ -36,8 +35,8 @@ createUsersTable =
              password        VARCHAR(255)   NOT NULL,
              email           VARCHAR(64)   NOT NULL UNIQUE,
              is_active       BOOLEAN NOT NULL DEFAULT FALSE,
-             more            JSON,
-          CONSTRAINT "l_pk" PRIMARY KEY (lid));
+             CONSTRAINT "l_pk" PRIMARY KEY (lid)
+          );
     |]
 
 createUserTokenTable :: Query
@@ -129,10 +128,10 @@ instance UserStorageBackend Connection where
         listToMaybe <$> map fromOnly <$> query conn [sql|SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
     getUserById conn userId =
         do resultSet <-
-               query conn [sql|SELECT username, email, is_active, more FROM login WHERE lid = ? LIMIT 1;|] (Only userId)
+               query conn [sql|SELECT username, email, is_active FROM login WHERE lid = ? LIMIT 1;|] (Only userId)
            case resultSet of
-             ((username, email, is_active, more) : _) ->
-                 return $ convertUserTuple (username, PasswordHidden, email, is_active, more)
+             ((username, email, is_active) : _) ->
+                 return $ Just $ convertUserTuple (username, PasswordHidden, email, is_active)
              _ -> return Nothing
     listUsers conn mLimit sortField =
         do let limitPart =
@@ -143,14 +142,13 @@ instance UserStorageBackend Connection where
                sortPart =
                    Query $ " " <> getOrderBy sortField <> " "
                baseQuery =
-                   [sql|SELECT lid, username, email, is_active, more FROM login|]
+                   [sql|SELECT lid, username, email, is_active FROM login|]
                fullQuery = baseQuery <> sortPart <> limitPart
-               convertUser (lid, username, email, isActive, more) =
-                   do user <- convertUserTuple (username, PasswordHidden, email, isActive, more)
-                      return (lid, user)
+               convertUser (lid, username, email, isActive) =
+                   (lid, convertUserTuple (username, PasswordHidden, email, isActive))
            resultSet <-
                query_ conn fullQuery
-           return $ catMaybes $ map convertUser resultSet
+           return $ map convertUser resultSet
 
     countUsers conn =
         do [(Only count)] <-
@@ -170,8 +168,8 @@ instance UserStorageBackend Connection where
                       (False, True)  -> return $ Left UsernameAlreadyTaken
                       (False, False) ->
                         do [(Only userId)] <-
-                               query conn [sql|INSERT INTO login (username, password, email, is_active, more) VALUES (?, ?, ?, ?, ?) RETURNING lid|]
-                                     (u_name user, p, u_email user, u_active user, toJSON $ u_more user)
+                               query conn [sql|INSERT INTO login (username, password, email, is_active) VALUES (?, ?, ?, ?) RETURNING lid|]
+                                     (u_name user, p, u_email user, u_active user)
                            return $ Right userId
           _ ->
               return $ Left InvalidPassword
@@ -193,8 +191,8 @@ instance UserStorageBackend Connection where
                             when ((counter :: Int64) /= 0) $ throwError EmailAlreadyExists
                     liftIO $
                        do _ <-
-                              execute conn [sql|UPDATE login SET username = ?, email = ?, is_active = ?, more = ? WHERE lid = ?;|]
-                                 (u_name newUser, u_email newUser, u_active newUser, toJSON $ u_more newUser, userId)
+                              execute conn [sql|UPDATE login SET username = ?, email = ?, is_active = ? WHERE lid = ?;|]
+                                 (u_name newUser, u_email newUser, u_active newUser, userId)
                           case u_password newUser of
                             PasswordHash p ->
                                 do _ <-
@@ -206,18 +204,18 @@ instance UserStorageBackend Connection where
         do _ <- execute conn [sql|DELETE FROM login WHERE lid = ?;|] (Only userId)
            return ()
     authUser conn username password sessionTtl =
-        withAuthUser conn username (\(user :: User Value) -> verifyPassword password $ u_password user) $ \userId ->
+        withAuthUser conn username (\user -> verifyPassword password $ u_password user) $ \userId ->
            SessionId <$> createToken conn "session" userId sessionTtl
     createSession conn userId sessionTtl =
         do mUser <- getUserById conn userId
-           case (mUser :: Maybe (User Value)) of
+           case (mUser :: Maybe User) of
              Nothing -> return Nothing
              Just _ -> Just . SessionId <$> createToken conn "session" userId sessionTtl
     withAuthUser conn username authFn action =
-        do resultSet <- query conn [sql|SELECT lid, username, password, email, is_active, more FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
+        do resultSet <- query conn [sql|SELECT lid, username, password, email, is_active FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
            case resultSet of
-             ((userId, name, password, email, is_active, more) : _)
-               -> do user <- convertUserTuple (name, PasswordHash password, email, is_active, more)
+             ((userId, name, password, email, is_active) : _)
+               -> do let user = convertUserTuple (name, PasswordHash password, email, is_active)
                      if authFn user
                         then Just <$> action userId
                         else return Nothing
@@ -243,7 +241,7 @@ instance UserStorageBackend Connection where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \(user :: User Value) -> user { u_active = True }
+                        updateUser conn userId $ \user -> user { u_active = True }
                     deleteToken conn "activation" token
                     return $ Right ()
     verifyPasswordResetToken conn (PasswordResetToken token) =
@@ -258,7 +256,7 @@ instance UserStorageBackend Connection where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \(user :: User Value) -> user { u_password = password }
+                        updateUser conn userId $ \user -> user { u_password = password }
                     deleteToken conn "password_reset" token
                     return $ Right ()
 
@@ -301,9 +299,6 @@ getTokenOwner conn tokenType token =
                ((Only userId) : _) -> return $ Just userId
                _ -> return Nothing
 
-convertUserTuple :: (FromJSON a, Monad m) => (T.Text, Password, T.Text, Bool, Value) -> m (User a)
-convertUserTuple (username, password, email, isActive, more) =
-    case fromJSON more of
-      Error e -> fail e
-      Success val ->
-          return $ User username email password isActive val
+convertUserTuple :: (T.Text, Password, T.Text, Bool) -> User
+convertUserTuple (username, password, email, isActive) =
+    User username email password isActive

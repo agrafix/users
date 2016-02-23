@@ -35,7 +35,6 @@ library
                        base >=4.6 && <5,
                        users >=0.5.0.0,
                        postgresql-simple >=0.4,
-                       aeson >=0.7,
                        text >=1.2,
                        mtl >=2.1,
                        uuid >=1.3,
