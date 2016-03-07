@@ -1,9 +1,12 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE CPP #-}
+
 module Web.Users.Postgresql () where
 
 import Web.Users.Types
@@ -97,7 +100,7 @@ getOrderBy sb =
       SortAsc t -> getSqlField t <> " ASC"
       SortDesc t -> getSqlField t <> " DESC"
 
-instance UserStorageBackend Connection where
+instance (IsUser u) => UserStorageBackend Connection u where
     type UserId Connection = Int64
     initUserBackend conn =
         do _ <- execute_ conn [sql|CREATE EXTENSION IF NOT EXISTS "uuid-ossp";|]
@@ -204,11 +207,11 @@ instance UserStorageBackend Connection where
         do _ <- execute conn [sql|DELETE FROM login WHERE lid = ?;|] (Only userId)
            return ()
     authUser conn username password sessionTtl =
-        withAuthUser conn username (\user -> verifyPassword password $ u_password user) $ \userId ->
+        withAuthUser conn username (\user -> verifyPassword password $ u_password (user :: u)) $ \userId ->
            SessionId <$> createToken conn "session" userId sessionTtl
     createSession conn userId sessionTtl =
         do mUser <- getUserById conn userId
-           case (mUser :: Maybe User) of
+           case (mUser :: Maybe u) of
              Nothing -> return Nothing
              Just _ -> Just . SessionId <$> createToken conn "session" userId sessionTtl
     withAuthUser conn username authFn action =
@@ -241,7 +244,7 @@ instance UserStorageBackend Connection where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \user -> user { u_active = True }
+                        updateUser conn userId $ \user -> create (u_name (user :: u)) (u_email user) (u_password user) True
                     deleteToken conn "activation" token
                     return $ Right ()
     verifyPasswordResetToken conn (PasswordResetToken token) =
@@ -256,7 +259,7 @@ instance UserStorageBackend Connection where
                  return $ Left TokenInvalid
              Just userId ->
                  do _ <-
-                        updateUser conn userId $ \user -> user { u_password = password }
+                        updateUser conn userId $ \user -> create (u_name (user :: u)) (u_email user) password True
                     deleteToken conn "password_reset" token
                     return $ Right ()
 
@@ -304,6 +307,6 @@ getTokenOwner conn tokenType token =
                ((Only userId) : _) -> return $ Just userId
                _ -> return Nothing
 
-convertUserTuple :: (T.Text, Password, T.Text, Bool) -> User
+convertUserTuple :: IsUser u => (T.Text, Password, T.Text, Bool) -> u
 convertUserTuple (username, password, email, isActive) =
-    User username email password isActive
+    create username email password isActive
