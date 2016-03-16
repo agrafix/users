@@ -9,6 +9,7 @@
 module Web.Users.Types
     ( -- * The core type class
       UserStorageBackend (..)
+    , UserSerializationBackend (..)
       -- * User representation
     , IsUser(..), Password(..), makePassword
     , PasswordPlain(..), verifyPassword
@@ -78,6 +79,17 @@ class (FromJSON u, ToJSON u) => IsUser u where
     u_password :: u -> Password
     u_active :: u -> Bool
 
+class (IsUser u, IsUserBackend b) => UserSerializationBackend b u where
+    initUserSerializationBackend :: b -> IO ()
+    -- | Retrieve a user from the database
+    getUserById :: b -> UserId b -> IO (Maybe u)
+    -- | Create a user
+    createUser :: b -> u -> IO (Either CreateUserError (UserId b))
+    -- | Modify a user
+    updateUser :: b -> UserId b -> (u -> u) -> IO (Either UpdateUserError ())
+    -- | Delete a user
+    deleteUser :: b -> UserId b -> IO ()
+
 -- | An abstract backend for managing users. A backend library should implement the interface and
 -- an end user should build applications on top of this interface.
 class (IsUser u, IsUserBackend b) => UserStorageBackend b u where
@@ -92,39 +104,31 @@ class (IsUser u, IsUserBackend b) => UserStorageBackend b u where
     housekeepBackend :: b -> IO ()
     -- | Retrieve a user id from the database
     getUserIdByName :: b -> T.Text -> IO (Maybe (UserId b))
-    -- | Retrieve a user from the database
-    getUserById :: b -> UserId b -> IO (Maybe u)
     -- | List all users unlimited, or limited, sorted by a 'UserField'
-    listUsers :: b -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId b, u)]
+    listUsers :: UserSerializationBackend b u => b -> Maybe (Int64, Int64) -> SortBy UserField -> IO [(UserId b, u)]
     -- | Count all users
     countUsers :: b -> IO Int64
-    -- | Create a user
-    createUser :: b -> u -> IO (Either CreateUserError (UserId b))
-    -- | Modify a user
-    updateUser :: b -> UserId b -> (u -> u) -> IO (Either UpdateUserError ())
-    -- | Delete a user
-    deleteUser :: b -> UserId b -> IO ()
     -- | Authentificate a user using username/email and password. The 'NominalDiffTime' describes the session duration
-    authUser :: b -> T.Text -> PasswordPlain -> NominalDiffTime -> IO (Maybe SessionId)
+    authUser :: UserSerializationBackend b u => b -> T.Text -> PasswordPlain -> NominalDiffTime -> IO (Maybe SessionId)
     -- | Authentificate a user and execute a single action.
-    withAuthUser :: b -> T.Text -> (u -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
+    withAuthUser :: UserSerializationBackend b u => b -> T.Text -> (u -> Bool) -> (UserId b -> IO r) -> IO (Maybe r)
     -- | Verify a 'SessionId'. The session duration can be extended by 'NominalDiffTime'
     verifySession :: b -> SessionId -> NominalDiffTime -> IO (Maybe (UserId b))
     -- | Force create a session for a user. This is useful for support/admin login.
     -- If the user does not exist, this will fail.
-    createSession :: b -> UserId b -> NominalDiffTime -> IO (Maybe SessionId)
+    createSession :: UserSerializationBackend b u => b -> UserId b -> NominalDiffTime -> IO (Maybe SessionId)
     -- | Destroy a session
     destroySession :: b -> SessionId -> IO ()
     -- | Request a 'PasswordResetToken' for a given user, valid for 'NominalDiffTime'
     requestPasswordReset :: b -> UserId b -> NominalDiffTime -> IO PasswordResetToken
     -- | Check if a 'PasswordResetToken' is still valid and retrieve the owner of it
-    verifyPasswordResetToken :: b -> PasswordResetToken -> IO (Maybe u)
+    verifyPasswordResetToken :: UserSerializationBackend b u => b -> PasswordResetToken -> IO (Maybe u)
     -- | Apply a new password to the owner of 'PasswordResetToken' iff the token is still valid
-    applyNewPassword :: b -> PasswordResetToken -> Password -> IO (Either TokenError ())
+    applyNewPassword :: UserSerializationBackend b u => b -> PasswordResetToken -> Password -> IO (Either TokenError ())
     -- | Request an 'ActivationToken' for a given user, valid for 'NominalDiffTime'
     requestActivationToken :: b -> UserId b -> NominalDiffTime -> IO ActivationToken
     -- | Activate the owner of 'ActivationToken' iff the token is still valid
-    activateUser :: b -> ActivationToken -> IO (Either TokenError ())
+    activateUser :: UserSerializationBackend b u => b -> ActivationToken -> IO (Either TokenError ())
 
 -- | A password reset token to send out to users via email or sms
 newtype PasswordResetToken

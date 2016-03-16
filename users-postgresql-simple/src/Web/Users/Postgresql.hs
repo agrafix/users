@@ -129,6 +129,7 @@ instance (IsUser u) => UserStorageBackend Connection u where
     -- | Retrieve a user id from the database
     getUserIdByName conn username =
         listToMaybe <$> map fromOnly <$> query conn [sql|SELECT lid FROM login WHERE (username = ? OR email = ?) LIMIT 1;|] (username, username)
+    {-
     getUserById conn userId =
         do resultSet <-
                query conn [sql|SELECT username, email, is_active FROM login WHERE lid = ? LIMIT 1;|] (Only userId)
@@ -136,6 +137,7 @@ instance (IsUser u) => UserStorageBackend Connection u where
              ((username, email, is_active) : _) ->
                  return $ Just $ convertUserTuple (username, PasswordHidden, email, is_active)
              _ -> return Nothing
+    -}
     listUsers conn mLimit sortField =
         do let limitPart =
                    case mLimit of
@@ -157,6 +159,7 @@ instance (IsUser u) => UserStorageBackend Connection u where
         do [(Only count)] <-
                query_ conn [sql|SELECT COUNT(lid) FROM login;|]
            return count
+    {-
     createUser conn user =
         case u_password user of
           PasswordHash p ->
@@ -206,6 +209,7 @@ instance (IsUser u) => UserStorageBackend Connection u where
     deleteUser conn userId =
         do _ <- execute conn [sql|DELETE FROM login WHERE lid = ?;|] (Only userId)
            return ()
+    -}
     authUser conn username password sessionTtl =
         withAuthUser conn username (\user -> verifyPassword password $ u_password (user :: u)) $ \userId ->
            SessionId <$> createToken conn "session" userId sessionTtl
