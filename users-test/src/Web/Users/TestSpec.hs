@@ -62,7 +62,7 @@ makeUsersSpec backend =
               it "list and count should be correct" $
                  assertRight (createUser backend userA) $ \userId1 ->
                  assertRight (createUser backend userB) $ \userId2 ->
-                 do allUsers <- listUsers backend Nothing (SortAsc UserFieldId)
+                 do allUsers <- listUsers backend (Just (0,10)) (SortAsc UserFieldId)
                     unless ((userId1, hidePassword userA) `elem` allUsers && (userId2, hidePassword userB) `elem` allUsers)
                            (expectationFailure $ "create users not in user list:" ++ show allUsers)
                     countUsers backend `shouldReturn` 2
