@@ -138,7 +138,7 @@ instance UserStorageBackend Connection where
                    case mLimit of
                      Nothing -> ""
                      Just (start, count) ->
-                         (Query $ BSC.pack $ " LIMIT " ++ show start ++ ", " ++ show count)
+                         (Query $ BSC.pack $ " OFFSET " ++ show start ++ " LIMIT " ++ show count)
                sortPart =
                    Query $ " " <> getOrderBy sortField <> " "
                baseQuery =
