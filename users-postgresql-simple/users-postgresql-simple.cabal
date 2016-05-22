@@ -1,5 +1,5 @@
 name:                users-postgresql-simple
-version:             0.5.0.1
+version:             0.5.0.2
 synopsis:            A PostgreSQL backend for the users package
 description:         This library is a backend driver using <http://hackage.haskell.org/package/postgresql-simple postgresql-simple> for
                      <http://hackage.haskell.org/package/users the "users" library>.
@@ -20,7 +20,7 @@ license:             MIT
 license-file:        LICENSE
 author:              Alexander Thiemann <mail@athiemann.net>
 maintainer:          Alexander Thiemann <mail@athiemann.net>
-copyright:           (c) 2015 Alexander Thiemann
+copyright:           (c) 2015 - 2016 Alexander Thiemann
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.10

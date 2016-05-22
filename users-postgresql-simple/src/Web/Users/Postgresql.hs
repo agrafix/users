@@ -109,6 +109,9 @@ instance UserStorageBackend Connection where
            unlessM (doesIndexExist conn "l_email") $
               do _ <- execute_ conn [sql|CREATE INDEX l_email ON login USING btree(email);|]
                  return ()
+           unlessM (doesIndexExist conn "l_lower_email") $
+              do _ <- execute_ conn [sql|CREATE INDEX l_lower_email ON login USING btree(lower(email));|]
+                 return ()
            unlessM (doesIndexExist conn "lt_token_type") $
               do _ <- execute_ conn [sql|CREATE INDEX lt_token_type ON login_token USING btree(token_type);|]
                  return ()
@@ -158,7 +161,7 @@ instance UserStorageBackend Connection where
         case u_password user of
           PasswordHash p ->
               do ([(Only emailCounter)], [(Only nameCounter)]) <- (,) <$>
-                     query conn [sql|SELECT COUNT(lid) FROM login WHERE email = ? LIMIT 1;|] (Only $ u_email user)
+                     query conn [sql|SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?) LIMIT 1;|] (Only $ u_email user)
                      <*> query conn [sql|SELECT COUNT(lid) FROM login WHERE username = ? LIMIT 1;|] (Only $ u_name user)
                  let both f (x, y) = (f x, f y)
                      bothCount = both (== 1) (emailCounter :: Int64, nameCounter :: Int64)
@@ -187,7 +190,7 @@ instance UserStorageBackend Connection where
                             when ((counter :: Int64) /= 0) $ throwError UsernameAlreadyExists
                     when (u_email newUser /= u_email origUser) $
                          do [(Only counter)] <-
-                                liftIO $ query conn [sql|SELECT COUNT(lid) FROM login WHERE email = ?;|] (Only $ u_email newUser)
+                                liftIO $ query conn [sql|SELECT COUNT(lid) FROM login WHERE lower(email) = lower(?);|] (Only $ u_email newUser)
                             when ((counter :: Int64) /= 0) $ throwError EmailAlreadyExists
                     liftIO $
                        do _ <-
@@ -265,7 +268,7 @@ convertTtl = round
 
 createToken :: Connection -> String -> Int64 -> NominalDiffTime -> IO T.Text
 createToken conn tokenType userId timeToLive =
-    do [(Only sessionToken)] <-
+    do [Only sessionToken] <-
            query conn [sql|INSERT INTO login_token (token, token_type, lid, valid_until)
                             VALUES (uuid_generate_v4(), ?, ?, NOW() + '? seconds')
                                    RETURNING token;|]

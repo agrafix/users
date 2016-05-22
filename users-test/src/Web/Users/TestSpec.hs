@@ -59,6 +59,9 @@ makeUsersSpec backend =
                         assertLeft (createUser backend (mkUser "asdas" "bar2@baz.com"))
                                        "succeeded to create different user with same email" $ \err ->
                             err `shouldBe` EmailAlreadyTaken
+                        assertLeft (createUser backend (mkUser "asdas" "Bar2@baz.com"))
+                           "succeeded to create different user with different email capitalisation" $ \err ->
+                            err `shouldBe` EmailAlreadyTaken
               it "list and count should be correct" $
                  assertRight (createUser backend userA) $ \userId1 ->
                  assertRight (createUser backend userB) $ \userId2 ->

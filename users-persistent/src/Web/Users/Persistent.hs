@@ -23,6 +23,7 @@ import Data.Typeable
 import Data.Time.Clock
 import Database.Persist
 import Database.Persist.Sql
+import qualified Database.Esqueleto as E
 import qualified Data.Text as T
 import qualified Data.UUID as UUID
 import qualified Data.UUID.V4 as UUID
@@ -137,12 +138,12 @@ instance UserStorageBackend Persistent where
                  let usr = mkUser now
                  runPersistent conn $
                    do mUsername <- selectFirst [LoginUsername ==. loginUsername usr] []
-                      mEmailAddress <- selectFirst [LoginEmail ==. loginEmail usr] []
-                      case (mUsername, mEmailAddress) of
-                        (Just _, Just _)   -> return $ Left UsernameAndEmailAlreadyTaken
-                        (Just _, _)        -> return $ Left UsernameAlreadyTaken
-                        (Nothing, Just _)  -> return $ Left EmailAlreadyTaken
-                        (Nothing, Nothing) -> Right <$> insert usr
+                      email <- emailInUse (loginEmail usr)
+                      case (mUsername, email) of
+                        (Just _, True) -> return $ Left UsernameAndEmailAlreadyTaken
+                        (Just _, _) -> return $ Left UsernameAlreadyTaken
+                        (Nothing, True)  -> return $ Left EmailAlreadyTaken
+                        (Nothing, False) -> Right <$> insert usr
     updateUser conn userId updateFun =
         do mUser <- getUserById conn userId
            case mUser of
@@ -155,8 +156,8 @@ instance UserStorageBackend Persistent where
                          do counter <- liftIO $ runPersistent conn $ count [LoginUsername ==. u_name newUser]
                             when (counter /= 0) $ throwError UsernameAlreadyExists
                     when (u_email newUser /= u_email origUser) $
-                         do counter <- liftIO $ runPersistent conn $ count [LoginEmail ==. u_email newUser]
-                            when (counter /= 0) $ throwError EmailAlreadyExists
+                         do emailUsed <- liftIO $ runPersistent conn $ emailInUse (u_email newUser)
+                            when emailUsed $ throwError EmailAlreadyExists
                     liftIO $ runPersistent conn $
                        do update userId [ LoginUsername =. u_name newUser
                                         , LoginEmail =. u_email newUser
@@ -221,6 +222,17 @@ instance UserStorageBackend Persistent where
                         updateUser conn userId $ \user -> user { u_password = password }
                     deleteToken conn "password_reset" token
                     return $ Right ()
+
+emailInUse :: MonadIO m => T.Text -> ReaderT SqlBackend m Bool
+emailInUse email =
+    do emailMatches <-
+           E.select $
+           E.from $ \login ->
+           do E.where_ $ E.lower_ (login E.^. LoginEmail)
+                            E.==. E.lower_ (E.val email)
+              E.limit 1
+              return login
+       return (not $ null emailMatches)
 
 createToken :: Persistent -> String -> LoginId -> NominalDiffTime -> IO T.Text
 createToken conn tokenType userId timeToLive =

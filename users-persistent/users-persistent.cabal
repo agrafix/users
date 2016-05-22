@@ -1,5 +1,5 @@
 name:                users-persistent
-version:             0.5.0.1
+version:             0.5.0.2
 synopsis:            A persistent backend for the users package
 description:         This library is a backend driver using <http://hackage.haskell.org/package/persistent persistent> for
                      <http://hackage.haskell.org/package/users the "users" library>.
@@ -32,6 +32,7 @@ library
   build-depends:       base >=4.6 && <5,
                        persistent >=2.0,
                        persistent-template >=2.1,
+                       esqueleto >=2.1,
                        users >=0.5,
                        transformers >=0.4,
                        mtl >=2.1,
