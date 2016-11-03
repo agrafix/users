@@ -80,7 +80,7 @@ class IsUserBackend b => UserStorageBackend b where
     destroyUserBackend :: b -> IO ()
     -- | This cleans up invalid sessions and other tokens. Call periodically as needed.
     housekeepBackend :: b -> IO ()
-    -- | Retrieve a user id from the database
+    -- | Retrieve a user id from the database by name or email
     getUserIdByName :: b -> T.Text -> IO (Maybe (UserId b))
     -- | Retrieve a user from the database
     getUserById :: b -> UserId b -> IO (Maybe User)
