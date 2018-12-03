@@ -65,6 +65,17 @@ doesIndexExist conn idx =
                       |] (Only idx)
        return (length resultSet > 0)
 
+doesExtensionExist :: Connection -> String -> IO Bool
+doesExtensionExist conn ext =
+    do (resultSet :: [Only Int]) <-
+           query conn [sql|SELECT 1
+                            FROM pg_extension e
+                            JOIN pg_namespace n ON n.oid = e.extnamespace
+                            WHERE e.extname = ?
+                            AND n.nspname = 'public';
+                      |] (Only ext)
+       return (length resultSet > 0)
+
 unlessM :: Monad m => m Bool -> m () -> m ()
 unlessM check a =
     do r <- check
@@ -100,7 +111,9 @@ getOrderBy sb =
 instance UserStorageBackend Connection where
     type UserId Connection = Int64
     initUserBackend conn =
-        do _ <- execute_ conn [sql|CREATE EXTENSION IF NOT EXISTS "uuid-ossp";|]
+        do unlessM (doesExtensionExist conn "uuid-ossp")
+              do _ <- execute_ conn [sql|CREATE EXTENSION "uuid-ossp";|]
+                 return ()
            _ <- execute_ conn createUsersTable
            _ <- execute_ conn createUserTokenTable
            unlessM (doesIndexExist conn "l_username") $
