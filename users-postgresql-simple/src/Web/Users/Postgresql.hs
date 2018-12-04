@@ -111,7 +111,7 @@ getOrderBy sb =
 instance UserStorageBackend Connection where
     type UserId Connection = Int64
     initUserBackend conn =
-        do unlessM (doesExtensionExist conn "uuid-ossp")
+        do unlessM (doesExtensionExist conn "uuid-ossp") $
               do _ <- execute_ conn [sql|CREATE EXTENSION "uuid-ossp";|]
                  return ()
            _ <- execute_ conn createUsersTable
