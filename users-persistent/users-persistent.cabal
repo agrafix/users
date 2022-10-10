@@ -42,7 +42,7 @@ library
                        uuid >=1.3
   hs-source-dirs:      src
   default-language:    Haskell2010
-  ghc-options:         -auto-all -Wall -fno-warn-orphans
+  ghc-options:         -fprof-auto -Wall -fno-warn-orphans
 
 test-suite users-persistent-tests
   type:                exitcode-stdio-1.0
@@ -57,5 +57,5 @@ test-suite users-persistent-tests
                        text,
                        users-persistent,
                        users-test
-  ghc-options:         -auto-all -Wall -fno-warn-orphans
+  ghc-options:         -fprof-auto -Wall -fno-warn-orphans
   default-language:    Haskell2010

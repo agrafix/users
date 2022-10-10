@@ -12,6 +12,9 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies  #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE DataKinds #-}
 
 module Web.Users.Persistent.Definitions where
 
