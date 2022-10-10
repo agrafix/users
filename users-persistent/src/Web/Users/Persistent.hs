@@ -19,6 +19,10 @@ import Control.Monad.Except
 #else
 import Control.Monad.Error
 #endif
+#if MIN_VERSION_base(4,13,0)
+import Prelude hiding (fail)
+import Control.Monad.Fail()
+#endif
 import Data.Typeable
 import Data.Time.Clock
 import Database.Persist
@@ -46,7 +50,13 @@ instance Error UpdateUserError where
     strMsg = error "Calling fail not supported"
 #endif
 
-packLogin :: Monad m => User -> m (UTCTime -> Login)
+packLogin ::
+  (Monad m
+#if MIN_VERSION_base(4,13,0)
+  , MonadFail m
+#endif
+  )
+  => User -> m (UTCTime -> Login)
 packLogin usr =
     do p <-
            case u_password usr of
